@@ -26,11 +26,21 @@ describe('buildConsumptionCurve', () => {
   it('produces the documented speed points scaled by the real-world factor', () => {
     const curve = buildConsumptionCurve(polo);
     expect(curve.map(([s]) => s)).toEqual([10, 30, 50, 70, 90, 110, 130]);
-    expect(curve[0][1]).toBeCloseTo(7.0 * 1.3 * REAL_WORLD_FACTOR, 2);
-    expect(curve[1][1]).toBeCloseTo(7.0 * REAL_WORLD_FACTOR, 2);
-    expect(curve[2][1]).toBeCloseTo(5.75 * REAL_WORLD_FACTOR, 2);
+    expect(curve[0][1]).toBeCloseTo(7.0 * 1.2 * REAL_WORLD_FACTOR, 2);
+    expect(curve[1][1]).toBeCloseTo(7.0 * 0.92 * REAL_WORLD_FACTOR, 2);
+    expect(curve[2][1]).toBeCloseTo(5.75 * 0.95 * REAL_WORLD_FACTOR, 2);
     expect(curve[3][1]).toBeCloseTo(4.5 * REAL_WORLD_FACTOR, 2);
-    expect(curve[6][1]).toBeCloseTo(4.5 * 1.4 * REAL_WORLD_FACTOR, 2);
+    expect(curve[4][1]).toBeCloseTo(4.5 * REAL_WORLD_FACTOR, 2);
+    expect(curve[5][1]).toBeCloseTo(4.5 * 1.08 * REAL_WORLD_FACTOR, 2);
+    expect(curve[6][1]).toBeCloseTo(4.5 * 1.26 * REAL_WORLD_FACTOR, 2);
+  });
+
+  it('is a drive-cycle-average curve: low speeds keep the urban (stop-start) cost', () => {
+    // TomTom is told speed changes are free, so the curve itself must carry the urban penalty.
+    const curve = buildConsumptionCurve(polo);
+    const at = (kmh: number) => curve.find(([s]) => s === kmh)![1];
+    expect(at(30)).toBeGreaterThan(at(70) * 1.3);
+    expect(at(110)).toBeLessThan(at(70) * 1.1);
   });
 
   it('rounds to 2 decimals', () => {

@@ -35,6 +35,12 @@ export function customConsumption(l100km: number): Consumption {
 /**
  * Speed -> L/100km curve from consumption figures; lab figures are scaled to real-world use
  * (REAL_WORLD_FACTOR), real-world figures (`realWorld: true`) are used as they are.
+ *
+ * This is a drive-cycle-average curve, not a steady-cruise one: the speed is a road segment's
+ * average speed, and the low-speed points use the urban figure, which already includes stop-start
+ * acceleration losses. TomTom is therefore told that speed changes cost nothing extra (see
+ * COMBUSTION_EFFICIENCY in providers/tomtom.ts) and only adds hill energy on top. Its own speed-change
+ * model with default efficiencies added ~3.5 L/100km even on the Joburg-Pretoria highway.
  * The curve falls to a minimum and rises monotonically after it, and fuel flow per hour
  * (speed x L/100km) strictly increases with speed, as TomTom's consumption model requires.
  */
@@ -43,13 +49,13 @@ export function buildConsumptionCurve(c: Consumption, opts: ConsumptionOptions =
   const { urban, extraUrban } = c;
   const mid = (urban + extraUrban) / 2;
   const raw: ConsumptionCurve = [
-    [10, urban * 1.3],
-    [30, urban],
-    [50, mid],
+    [10, urban * 1.2],
+    [30, urban * 0.92],
+    [50, mid * 0.95],
     [70, extraUrban],
-    [90, extraUrban * 1.02],
-    [110, extraUrban * 1.18],
-    [130, extraUrban * 1.4],
+    [90, extraUrban],
+    [110, extraUrban * 1.08],
+    [130, extraUrban * 1.26],
   ];
   const curve: ConsumptionCurve = raw.map(([s, l]) => [s, round2(l * factor)]);
 

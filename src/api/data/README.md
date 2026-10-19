@@ -47,5 +47,26 @@ the user enters (`customConsumptionL100km`) is treated as a real-world figure an
 It is used as the steady-cruise figure (about 70–90 km/h with no traffic), and the urban figure is
 taken as 1.3 times it, so slower and congested trips still come out a little higher.
 
+### How the fuel figures reach TomTom
+
+TomTom's combustion model takes a speed → L/100km curve (`constantSpeedConsumptionInLitersPerHundredkm`)
+and, when `vehicleWeight` and the efficiency parameters are sent, adds energy for speed changes
+(`acceleration`/`decelerationEfficiency`) and for hills (`uphill`/`downhillEfficiency`).
+
+Our curve (`buildConsumptionCurve`) is a **drive-cycle average**, not a steady-cruise curve: its
+low-speed points come from the urban figure (crawl 1.2×, 30 km/h 0.92× urban), which already
+includes stop-start acceleration losses, 70–90 km/h sit on the extra-urban figure, and above
+100 km/h it rises for air drag (1.08× at 110, 1.26× at 130). So that acceleration is not counted
+twice, the API sends speed-change efficiencies of 1/1 (energy-neutral) and keeps TomTom's
+recommended hill efficiencies (0.27 uphill, 0.51 downhill), so climbs cost fuel in proportion to
+the vehicle's weight. With TomTom's default speed-change efficiencies (0.33/0.83) its speed-change
+term alone added about 3.5 L/100km to a Polo Vivo on the Joburg–Pretoria highway, even with a pure
+steady-cruise curve, which is why it is switched off rather than paired with a cruise curve.
+
+Calibration (live TomTom, October 2026, Polo Vivo 1.4, combined 5.9): Joburg → Pretoria ≈ 7.0,
+Soweto → Rosebank → Kempton Park ≈ 8.2, Cape Town → Stellenbosch ≈ 6.5 L/100km. Without a vehicle
+weight (custom consumption only), no efficiency parameters are sent and TomTom uses the curve alone.
+The offline fallback model (`fallbackLitres`) gives about the same figure at the same average speed.
+
 To add a vehicle, give it a unique kebab-case `id`, fill in every `Vehicle` field and run the
 tests.

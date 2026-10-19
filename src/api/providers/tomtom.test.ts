@@ -93,8 +93,9 @@ describe('TomTom provider', () => {
     expect(q.get('constantSpeedConsumptionInLitersPerHundredkm')).toBe(curve.map(([s, l]) => `${s},${l}`).join(':'));
     expect(q.get('vehicleWeight')).toBe('1230');
     expect(q.get('fuelEnergyDensityInMJoulesPerLiter')).toBe('34.2');
-    expect(q.get('accelerationEfficiency')).toBe('0.33');
-    expect(q.get('decelerationEfficiency')).toBe('0.83');
+    // Speed changes are energy-neutral (the curve already includes stop-start losses); hills are not.
+    expect(q.get('accelerationEfficiency')).toBe('1');
+    expect(q.get('decelerationEfficiency')).toBe('1');
     expect(q.get('uphillEfficiency')).toBe('0.27');
     expect(q.get('downhillEfficiency')).toBe('0.51');
   });

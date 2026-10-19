@@ -8,10 +8,17 @@ const REQUEST_TIMEOUT_MS = 20_000;
 /** Lower heating value of the fuel, MJ per litre (TomTom combustion model). */
 export const FUEL_ENERGY_DENSITY_MJ_PER_L = { petrol: 34.2, diesel: 35.8 } as const;
 
-/** TomTom's recommended default efficiencies for a combustion engine. */
-const COMBUSTION_EFFICIENCY = {
-  accelerationEfficiency: '0.33',
-  decelerationEfficiency: '0.83',
+/**
+ * Efficiency parameters sent with vehicleWeight. Our consumption curve is a drive-cycle average
+ * (its low-speed points come from the urban figure, which already includes stop-start losses), so
+ * speed changes are made energy-neutral (1/1) to avoid counting acceleration twice. Hills keep
+ * TomTom's recommended combustion values, so climbs cost fuel in proportion to vehicle weight.
+ * (With TomTom's default 0.33/0.83 speed-change efficiencies, a Polo Vivo came out at
+ * ~10.4 L/100km on the Joburg-Pretoria highway even with a pure steady-cruise curve.)
+ */
+export const COMBUSTION_EFFICIENCY = {
+  accelerationEfficiency: '1',
+  decelerationEfficiency: '1',
   uphillEfficiency: '0.27',
   downhillEfficiency: '0.51',
 } as const;
