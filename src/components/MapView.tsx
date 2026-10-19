@@ -10,11 +10,18 @@ import {
   Map as MapLibreMap,
   Marker,
   NavigationControl,
+  setWorkerUrl,
   type GeoJSONSource,
   type MapMouseEvent,
   type StyleSpecification,
 } from 'maplibre-gl';
+// maplibre-gl derives its worker URL from its own import.meta.url at runtime, which breaks once
+// Vite relocates the library (dev dep optimizer: /node_modules/.vite/deps/; build: dist/assets/
+// without the worker file). Hand it the worker as a Vite-managed asset URL instead.
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import type { LatLng } from '../shared/types';
+
+setWorkerUrl(maplibreWorkerUrl);
 
 export interface MapViewProps {
   points: LatLng[];

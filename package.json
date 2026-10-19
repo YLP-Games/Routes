@@ -7,9 +7,9 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "concurrently -n web,api -c cyan,magenta \"vite\" \"tsx watch src/api/server.ts\"",
+    "dev": "concurrently -n web,api -c cyan,magenta \"vite\" \"tsx watch src/api/server.ts --port 8787\"",
     "dev:web": "vite",
-    "dev:api": "tsx watch src/api/server.ts",
+    "dev:api": "tsx watch src/api/server.ts --port 8787",
     "build": "vite build",
     "start": "tsx src/api/server.ts",
     "test": "vitest run",

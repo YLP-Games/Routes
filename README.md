@@ -27,12 +27,20 @@ still works end to end for development.
 |----------------------|------------------------------------------------------|
 | `npm run dev`        | Vite dev server + API server (watch mode) together   |
 | `npm run dev:web`    | Vite dev server only (proxies `/api` to :8787)       |
-| `npm run dev:api`    | API server only, watch mode                          |
+| `npm run dev:api`    | API server only, watch mode, on :8787                |
 | `npm run build`      | Production build of the frontend to `dist/`          |
 | `npm start`          | Run the API server                                   |
 | `npm test`           | Run all tests once (Vitest projects `api` and `web`) |
 | `npm run test:watch` | Vitest in watch mode                                 |
 | `npm run typecheck`  | TypeScript type check                                |
+
+### Ports
+
+The API picks its port from `API_PORT`, then a `--port <n>` argument, then `PORT`, then 8787.
+The dev scripts pass `--port 8787`, and the Vite dev server proxies `/api` to `API_PORT` (default
+8787), so a `PORT` set for Vite (for example by a preview launcher) can't move the API onto Vite's
+port. To use another API port in dev, set `API_PORT` in `.env` or the environment: both sides
+follow it. `PORT` only matters for `npm start` on hosts that assign one.
 
 ## Folder ownership
 
