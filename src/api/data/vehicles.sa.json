@@ -1,0 +1,642 @@
+[
+  {
+    "id": "toyota-hilux-2-4gd6-raider-dc",
+    "make": "Toyota",
+    "model": "Hilux",
+    "variant": "2.4GD-6 Raider Double Cab",
+    "yearFrom": 2016,
+    "fuelType": "diesel",
+    "engineCc": 2393,
+    "massKg": 1950,
+    "consumption": {
+      "urban": 9.9,
+      "extraUrban": 6.5,
+      "combined": 7.6
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "toyota-hilux-2-8gd6-legend-dc-4x4-at",
+    "make": "Toyota",
+    "model": "Hilux",
+    "variant": "2.8GD-6 Legend Double Cab 4x4 AT",
+    "yearFrom": 2016,
+    "fuelType": "diesel",
+    "engineCc": 2755,
+    "massKg": 2130,
+    "consumption": {
+      "urban": 11.1,
+      "extraUrban": 7.2,
+      "combined": 8.5
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "toyota-corolla-cross-1-8-xs",
+    "make": "Toyota",
+    "model": "Corolla Cross",
+    "variant": "1.8 XS CVT",
+    "yearFrom": 2021,
+    "fuelType": "petrol",
+    "engineCc": 1798,
+    "massKg": 1385,
+    "consumption": {
+      "urban": 9.1,
+      "extraUrban": 6,
+      "combined": 7
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "toyota-fortuner-2-4gd6-at",
+    "make": "Toyota",
+    "model": "Fortuner",
+    "variant": "2.4GD-6 4x2 AT",
+    "yearFrom": 2016,
+    "fuelType": "diesel",
+    "engineCc": 2393,
+    "massKg": 2050,
+    "consumption": {
+      "urban": 10.1,
+      "extraUrban": 6.6,
+      "combined": 7.8
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "toyota-starlet-1-5-xs",
+    "make": "Toyota",
+    "model": "Starlet",
+    "variant": "1.5 XS",
+    "yearFrom": 2020,
+    "fuelType": "petrol",
+    "engineCc": 1462,
+    "massKg": 925,
+    "consumption": {
+      "urban": 7,
+      "extraUrban": 4.6,
+      "combined": 5.4
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "toyota-corolla-quest-1-8",
+    "make": "Toyota",
+    "model": "Corolla Quest",
+    "variant": "1.8 Prestige",
+    "yearFrom": 2014,
+    "fuelType": "petrol",
+    "engineCc": 1798,
+    "massKg": 1250,
+    "consumption": {
+      "urban": 8.8,
+      "extraUrban": 5.8,
+      "combined": 6.8
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "toyota-urban-cruiser-1-5-xs",
+    "make": "Toyota",
+    "model": "Urban Cruiser",
+    "variant": "1.5 XS",
+    "yearFrom": 2021,
+    "fuelType": "petrol",
+    "engineCc": 1462,
+    "massKg": 1130,
+    "consumption": {
+      "urban": 7.8,
+      "extraUrban": 5.1,
+      "combined": 6
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "toyota-vitz-1-0-xr",
+    "make": "Toyota",
+    "model": "Vitz",
+    "variant": "1.0 XR",
+    "yearFrom": 2022,
+    "fuelType": "petrol",
+    "engineCc": 998,
+    "massKg": 870,
+    "consumption": {
+      "urban": 5.7,
+      "extraUrban": 3.7,
+      "combined": 4.4
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "vw-polo-vivo-1-4-trendline",
+    "make": "Volkswagen",
+    "model": "Polo Vivo",
+    "variant": "1.4 Trendline",
+    "yearFrom": 2018,
+    "fuelType": "petrol",
+    "engineCc": 1390,
+    "massKg": 1090,
+    "consumption": {
+      "urban": 7.7,
+      "extraUrban": 5,
+      "combined": 5.9
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "vw-polo-vivo-1-6-highline",
+    "make": "Volkswagen",
+    "model": "Polo Vivo",
+    "variant": "1.6 Highline",
+    "yearFrom": 2018,
+    "fuelType": "petrol",
+    "engineCc": 1598,
+    "massKg": 1120,
+    "consumption": {
+      "urban": 8.2,
+      "extraUrban": 5.4,
+      "combined": 6.3
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "vw-polo-1-0-tsi-life",
+    "make": "Volkswagen",
+    "model": "Polo",
+    "variant": "1.0 TSI Life",
+    "yearFrom": 2018,
+    "fuelType": "petrol",
+    "engineCc": 999,
+    "massKg": 1150,
+    "consumption": {
+      "urban": 6.5,
+      "extraUrban": 4.3,
+      "combined": 5
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "vw-t-cross-1-0-tsi-life",
+    "make": "Volkswagen",
+    "model": "T-Cross",
+    "variant": "1.0 TSI Life DSG",
+    "yearFrom": 2019,
+    "fuelType": "petrol",
+    "engineCc": 999,
+    "massKg": 1250,
+    "consumption": {
+      "urban": 7.3,
+      "extraUrban": 4.8,
+      "combined": 5.6
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "suzuki-swift-1-2-gl",
+    "make": "Suzuki",
+    "model": "Swift",
+    "variant": "1.2 GL",
+    "yearFrom": 2024,
+    "fuelType": "petrol",
+    "engineCc": 1197,
+    "massKg": 900,
+    "consumption": {
+      "urban": 6,
+      "extraUrban": 3.9,
+      "combined": 4.6
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "suzuki-dzire-1-2-gl",
+    "make": "Suzuki",
+    "model": "Dzire",
+    "variant": "1.2 GL",
+    "yearFrom": 2024,
+    "fuelType": "petrol",
+    "engineCc": 1197,
+    "massKg": 920,
+    "consumption": {
+      "urban": 6.4,
+      "extraUrban": 4.2,
+      "combined": 4.9
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "suzuki-baleno-1-5-gl",
+    "make": "Suzuki",
+    "model": "Baleno",
+    "variant": "1.5 GL",
+    "yearFrom": 2022,
+    "fuelType": "petrol",
+    "engineCc": 1462,
+    "massKg": 950,
+    "consumption": {
+      "urban": 7,
+      "extraUrban": 4.6,
+      "combined": 5.4
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "suzuki-fronx-1-5-gl",
+    "make": "Suzuki",
+    "model": "Fronx",
+    "variant": "1.5 GL",
+    "yearFrom": 2023,
+    "fuelType": "petrol",
+    "engineCc": 1462,
+    "massKg": 1050,
+    "consumption": {
+      "urban": 7.5,
+      "extraUrban": 4.9,
+      "combined": 5.8
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "suzuki-ertiga-1-5-gl",
+    "make": "Suzuki",
+    "model": "Ertiga",
+    "variant": "1.5 GL",
+    "yearFrom": 2019,
+    "fuelType": "petrol",
+    "engineCc": 1462,
+    "massKg": 1135,
+    "consumption": {
+      "urban": 8.1,
+      "extraUrban": 5.3,
+      "combined": 6.2
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "suzuki-celerio-1-0-gl",
+    "make": "Suzuki",
+    "model": "Celerio",
+    "variant": "1.0 GL",
+    "yearFrom": 2022,
+    "fuelType": "petrol",
+    "engineCc": 998,
+    "massKg": 820,
+    "consumption": {
+      "urban": 5.7,
+      "extraUrban": 3.7,
+      "combined": 4.4
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "ford-ranger-2-0-bit-xlt-dc",
+    "make": "Ford",
+    "model": "Ranger",
+    "variant": "2.0 BiT XLT Double Cab AT",
+    "yearFrom": 2022,
+    "fuelType": "diesel",
+    "engineCc": 1996,
+    "massKg": 2200,
+    "consumption": {
+      "urban": 10.3,
+      "extraUrban": 6.7,
+      "combined": 7.9
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "ford-everest-2-0-bit-xlt",
+    "make": "Ford",
+    "model": "Everest",
+    "variant": "2.0 BiT XLT AT",
+    "yearFrom": 2022,
+    "fuelType": "diesel",
+    "engineCc": 1996,
+    "massKg": 2400,
+    "consumption": {
+      "urban": 10.7,
+      "extraUrban": 7,
+      "combined": 8.2
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "isuzu-d-max-1-9-ddi-dc",
+    "make": "Isuzu",
+    "model": "D-Max",
+    "variant": "1.9 Ddi Double Cab",
+    "yearFrom": 2022,
+    "fuelType": "diesel",
+    "engineCc": 1898,
+    "massKg": 1750,
+    "consumption": {
+      "urban": 9.1,
+      "extraUrban": 6,
+      "combined": 7
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "isuzu-d-max-3-0-ddi-dc",
+    "make": "Isuzu",
+    "model": "D-Max",
+    "variant": "3.0 Ddi Double Cab 4x4",
+    "yearFrom": 2022,
+    "fuelType": "diesel",
+    "engineCc": 2999,
+    "massKg": 2050,
+    "consumption": {
+      "urban": 10.4,
+      "extraUrban": 6.8,
+      "combined": 8
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "nissan-navara-2-5dci-dc",
+    "make": "Nissan",
+    "model": "Navara",
+    "variant": "2.5 dCi Double Cab",
+    "yearFrom": 2021,
+    "fuelType": "diesel",
+    "engineCc": 2488,
+    "massKg": 2000,
+    "consumption": {
+      "urban": 10.1,
+      "extraUrban": 6.6,
+      "combined": 7.8
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "nissan-magnite-1-0-acenta",
+    "make": "Nissan",
+    "model": "Magnite",
+    "variant": "1.0 Acenta",
+    "yearFrom": 2021,
+    "fuelType": "petrol",
+    "engineCc": 999,
+    "massKg": 960,
+    "consumption": {
+      "urban": 6.8,
+      "extraUrban": 4.4,
+      "combined": 5.2
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "hyundai-i20-1-2-motion",
+    "make": "Hyundai",
+    "model": "i20",
+    "variant": "1.2 Motion",
+    "yearFrom": 2021,
+    "fuelType": "petrol",
+    "engineCc": 1197,
+    "massKg": 1050,
+    "consumption": {
+      "urban": 7.2,
+      "extraUrban": 4.7,
+      "combined": 5.5
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "hyundai-grand-i10-1-0-motion",
+    "make": "Hyundai",
+    "model": "Grand i10",
+    "variant": "1.0 Motion",
+    "yearFrom": 2020,
+    "fuelType": "petrol",
+    "engineCc": 998,
+    "massKg": 920,
+    "consumption": {
+      "urban": 6.6,
+      "extraUrban": 4.3,
+      "combined": 5.1
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "hyundai-creta-1-5-executive",
+    "make": "Hyundai",
+    "model": "Creta",
+    "variant": "1.5 Executive IVT",
+    "yearFrom": 2022,
+    "fuelType": "petrol",
+    "engineCc": 1497,
+    "massKg": 1250,
+    "consumption": {
+      "urban": 8.5,
+      "extraUrban": 5.5,
+      "combined": 6.5
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "hyundai-tucson-2-0-premium",
+    "make": "Hyundai",
+    "model": "Tucson",
+    "variant": "2.0 Premium AT",
+    "yearFrom": 2021,
+    "fuelType": "petrol",
+    "engineCc": 1999,
+    "massKg": 1550,
+    "consumption": {
+      "urban": 10.4,
+      "extraUrban": 6.8,
+      "combined": 8
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "kia-picanto-1-0-street",
+    "make": "Kia",
+    "model": "Picanto",
+    "variant": "1.0 Street",
+    "yearFrom": 2017,
+    "fuelType": "petrol",
+    "engineCc": 998,
+    "massKg": 930,
+    "consumption": {
+      "urban": 6.5,
+      "extraUrban": 4.3,
+      "combined": 5
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "kia-sonet-1-5-lx",
+    "make": "Kia",
+    "model": "Sonet",
+    "variant": "1.5 LX",
+    "yearFrom": 2020,
+    "fuelType": "petrol",
+    "engineCc": 1497,
+    "massKg": 1150,
+    "consumption": {
+      "urban": 8.2,
+      "extraUrban": 5.4,
+      "combined": 6.3
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "kia-seltos-1-5-ex",
+    "make": "Kia",
+    "model": "Seltos",
+    "variant": "1.5 EX IVT",
+    "yearFrom": 2020,
+    "fuelType": "petrol",
+    "engineCc": 1497,
+    "massKg": 1250,
+    "consumption": {
+      "urban": 8.6,
+      "extraUrban": 5.6,
+      "combined": 6.6
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "renault-kwid-1-0-climber",
+    "make": "Renault",
+    "model": "Kwid",
+    "variant": "1.0 Climber",
+    "yearFrom": 2019,
+    "fuelType": "petrol",
+    "engineCc": 999,
+    "massKg": 780,
+    "consumption": {
+      "urban": 6.1,
+      "extraUrban": 4,
+      "combined": 4.7
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "renault-kiger-1-0-zen",
+    "make": "Renault",
+    "model": "Kiger",
+    "variant": "1.0 Zen",
+    "yearFrom": 2021,
+    "fuelType": "petrol",
+    "engineCc": 999,
+    "massKg": 950,
+    "consumption": {
+      "urban": 6.9,
+      "extraUrban": 4.5,
+      "combined": 5.3
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "chery-tiggo-4-pro-1-5-urban",
+    "make": "Chery",
+    "model": "Tiggo 4 Pro",
+    "variant": "1.5 Urban",
+    "yearFrom": 2022,
+    "fuelType": "petrol",
+    "engineCc": 1497,
+    "massKg": 1300,
+    "consumption": {
+      "urban": 9.6,
+      "extraUrban": 6.3,
+      "combined": 7.4
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "chery-tiggo-7-pro-1-5t-distinction",
+    "make": "Chery",
+    "model": "Tiggo 7 Pro",
+    "variant": "1.5T Distinction",
+    "yearFrom": 2022,
+    "fuelType": "petrol",
+    "engineCc": 1498,
+    "massKg": 1500,
+    "consumption": {
+      "urban": 9.8,
+      "extraUrban": 6.4,
+      "combined": 7.5
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "haval-jolion-1-5t-premium",
+    "make": "Haval",
+    "model": "Jolion",
+    "variant": "1.5T Premium DCT",
+    "yearFrom": 2021,
+    "fuelType": "petrol",
+    "engineCc": 1497,
+    "massKg": 1450,
+    "consumption": {
+      "urban": 9.6,
+      "extraUrban": 6.3,
+      "combined": 7.4
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "mahindra-xuv300-1-2t-w6",
+    "make": "Mahindra",
+    "model": "XUV300",
+    "variant": "1.2T W6",
+    "yearFrom": 2020,
+    "fuelType": "petrol",
+    "engineCc": 1197,
+    "massKg": 1300,
+    "consumption": {
+      "urban": 8.3,
+      "extraUrban": 5.4,
+      "combined": 6.4
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "mahindra-pik-up-2-2-dc-s6",
+    "make": "Mahindra",
+    "model": "Pik Up",
+    "variant": "2.2 mHawk S6 Double Cab",
+    "yearFrom": 2018,
+    "fuelType": "diesel",
+    "engineCc": 2179,
+    "massKg": 2050,
+    "consumption": {
+      "urban": 11.6,
+      "extraUrban": 7.6,
+      "combined": 8.9
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "bmw-320i-m-sport",
+    "make": "BMW",
+    "model": "3 Series",
+    "variant": "320i M Sport",
+    "yearFrom": 2019,
+    "fuelType": "petrol",
+    "engineCc": 1998,
+    "massKg": 1520,
+    "consumption": {
+      "urban": 8.3,
+      "extraUrban": 5.4,
+      "combined": 6.4
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  },
+  {
+    "id": "mercedes-benz-c200",
+    "make": "Mercedes-Benz",
+    "model": "C-Class",
+    "variant": "C200",
+    "yearFrom": 2022,
+    "fuelType": "petrol",
+    "engineCc": 1496,
+    "massKg": 1650,
+    "consumption": {
+      "urban": 8.8,
+      "extraUrban": 5.8,
+      "combined": 6.8
+    },
+    "source": "Manufacturer claimed combined (approx.); urban/extra-urban derived"
+  }
+]

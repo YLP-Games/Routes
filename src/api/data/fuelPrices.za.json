@@ -1,0 +1,130 @@
+[
+  {
+    "month": "2026-10",
+    "effectiveDate": "2026-10-07",
+    "zone": "inland",
+    "fuel": "petrol95",
+    "randsPerLitre": 30.25,
+    "source": "TimesLIVE / DMPR, 2026-10-05"
+  },
+  {
+    "month": "2026-10",
+    "effectiveDate": "2026-10-07",
+    "zone": "inland",
+    "fuel": "petrol93",
+    "randsPerLitre": 29.88,
+    "source": "TimesLIVE / DMPR, 2026-10-05"
+  },
+  {
+    "month": "2026-10",
+    "effectiveDate": "2026-10-07",
+    "zone": "coastal",
+    "fuel": "petrol95",
+    "randsPerLitre": 29.38,
+    "source": "TimesLIVE / DMPR, 2026-10-05"
+  },
+  {
+    "month": "2026-10",
+    "effectiveDate": "2026-10-07",
+    "zone": "coastal",
+    "fuel": "petrol93",
+    "randsPerLitre": 29.09,
+    "source": "https://businesstech.co.za/news/?p=878120 (BusinessTech, official DMPR prices, 2026-10-05); https://topauto.co.za/news/165306/official-petrol-price-increases-for-october-announced/ (TopAuto, DMPR, 2026-10-05)"
+  },
+  {
+    "month": "2026-10",
+    "effectiveDate": "2026-10-07",
+    "zone": "inland",
+    "fuel": "diesel500ppm",
+    "randsPerLitre": 31.95,
+    "source": "https://businesstech.co.za/news/?p=878120 (BusinessTech, official DMPR prices, 2026-10-05) - wholesale price (retail diesel is not regulated)"
+  },
+  {
+    "month": "2026-10",
+    "effectiveDate": "2026-10-07",
+    "zone": "inland",
+    "fuel": "diesel50ppm",
+    "randsPerLitre": 33.29,
+    "source": "https://businesstech.co.za/news/?p=878120 (BusinessTech, official DMPR prices, 2026-10-05) - wholesale price (retail diesel is not regulated)"
+  },
+  {
+    "month": "2026-10",
+    "effectiveDate": "2026-10-07",
+    "zone": "coastal",
+    "fuel": "diesel500ppm",
+    "randsPerLitre": 31.08,
+    "source": "https://businesstech.co.za/news/?p=878120 (BusinessTech, official DMPR prices, 2026-10-05) - wholesale price (retail diesel is not regulated)"
+  },
+  {
+    "month": "2026-10",
+    "effectiveDate": "2026-10-07",
+    "zone": "coastal",
+    "fuel": "diesel50ppm",
+    "randsPerLitre": 32.03,
+    "source": "https://businesstech.co.za/news/?p=878120 (BusinessTech, official DMPR prices, 2026-10-05) - wholesale price (retail diesel is not regulated)"
+  },
+  {
+    "month": "2026-09",
+    "effectiveDate": "2026-09-02",
+    "zone": "inland",
+    "fuel": "petrol95",
+    "randsPerLitre": 26.92,
+    "source": "TimesLIVE / DMPR, 2026-10-05 (Oct price less R3.33 increase)"
+  },
+  {
+    "month": "2026-09",
+    "effectiveDate": "2026-09-02",
+    "zone": "inland",
+    "fuel": "petrol93",
+    "randsPerLitre": 26.76,
+    "source": "TimesLIVE / DMPR, 2026-10-05 (Oct price less R3.12 increase)"
+  },
+  {
+    "month": "2026-09",
+    "effectiveDate": "2026-09-02",
+    "zone": "coastal",
+    "fuel": "petrol95",
+    "randsPerLitre": 26.05,
+    "source": "TimesLIVE / DMPR, 2026-10-05 (Oct price less R3.33 increase)"
+  },
+  {
+    "month": "2026-09",
+    "effectiveDate": "2026-09-02",
+    "zone": "coastal",
+    "fuel": "petrol93",
+    "randsPerLitre": 25.97,
+    "source": "https://businesstech.co.za/news/?p=878120 (BusinessTech, official DMPR prices, 2026-10-05)"
+  },
+  {
+    "month": "2026-09",
+    "effectiveDate": "2026-09-02",
+    "zone": "inland",
+    "fuel": "diesel500ppm",
+    "randsPerLitre": 29.11,
+    "source": "https://businesstech.co.za/news/?p=878120 (BusinessTech, official DMPR prices, 2026-10-05) - wholesale price (retail diesel is not regulated)"
+  },
+  {
+    "month": "2026-09",
+    "effectiveDate": "2026-09-02",
+    "zone": "inland",
+    "fuel": "diesel50ppm",
+    "randsPerLitre": 30.05,
+    "source": "https://businesstech.co.za/news/?p=878120 (BusinessTech, official DMPR prices, 2026-10-05) - wholesale price (retail diesel is not regulated)"
+  },
+  {
+    "month": "2026-09",
+    "effectiveDate": "2026-09-02",
+    "zone": "coastal",
+    "fuel": "diesel500ppm",
+    "randsPerLitre": 28.24,
+    "source": "https://businesstech.co.za/news/?p=878120 (BusinessTech, official DMPR prices, 2026-10-05) - wholesale price (retail diesel is not regulated)"
+  },
+  {
+    "month": "2026-09",
+    "effectiveDate": "2026-09-02",
+    "zone": "coastal",
+    "fuel": "diesel50ppm",
+    "randsPerLitre": 28.79,
+    "source": "https://businesstech.co.za/news/?p=878120 (BusinessTech, official DMPR prices, 2026-10-05) - wholesale price (retail diesel is not regulated)"
+  }
+]
