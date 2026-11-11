@@ -137,6 +137,7 @@ export function VehiclePicker({ value, onChange, debounceMs = 300 }: VehiclePick
             placeholder="e.g. 7.5"
             value={value.customConsumption}
             aria-invalid={customInvalid || undefined}
+            aria-describedby={`${id}-custom-hint`}
             onChange={(e) => update({ customConsumption: e.target.value })}
           />
           {customInvalid && (
@@ -145,6 +146,11 @@ export function VehiclePicker({ value, onChange, debounceMs = 300 }: VehiclePick
             </span>
           )}
         </label>
+      )}
+      {value.useCustom && (
+        <p id={`${id}-custom-hint`} className="hint hint--small">
+          Use your open-road figure (steady 80–100 km/h). City driving and traffic are added on top, so slower trips come out higher.
+        </p>
       )}
 
       <div className="field-row">

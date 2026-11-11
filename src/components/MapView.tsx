@@ -1,8 +1,9 @@
 /**
- * MapLibre map: click to add route points, drag numbered markers to move them,
- * right-click / long-press a marker to remove it. Draws the user's route (solid) and the
- * provider's fastest route (dashed grey). All maplibre-gl code lives in this file so tests
- * can replace the whole component with a stub.
+ * MapLibre map: click to add route points, click the route line to add a via point in between,
+ * drag numbered markers to move them, right-click / long-press a marker to remove it. Draws the
+ * user's route (solid), the provider's fastest route (dashed grey) and, until a route has been
+ * calculated for the current points, a straight-line sketch through them. All maplibre-gl code
+ * lives in this file so it loads as its own chunk and tests can replace the whole component.
  */
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -15,11 +16,13 @@ import {
   type MapMouseEvent,
   type StyleSpecification,
 } from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
 // maplibre-gl derives its worker URL from its own import.meta.url at runtime, which breaks once
 // Vite relocates the library (dev dep optimizer: /node_modules/.vite/deps/; build: dist/assets/
 // without the worker file). Hand it the worker as a Vite-managed asset URL instead.
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import type { LatLng } from '../shared/types';
+import { insertionIndex } from '../lib/geo';
 
 setWorkerUrl(maplibreWorkerUrl);
 
@@ -27,7 +30,11 @@ export interface MapViewProps {
   points: LatLng[];
   geometry?: LatLng[];
   fastestGeometry?: LatLng[];
+  /** True when the drawn route no longer matches the points or options: it is faded out. */
+  stale?: boolean;
   onAddPoint: (p: LatLng) => void;
+  /** A click on the route line: insert `p` so that it becomes point number `index`. */
+  onInsertPoint: (index: number, p: LatLng) => void;
   onMovePoint: (index: number, p: LatLng) => void;
   onRemovePoint: (index: number) => void;
 }
@@ -36,9 +43,15 @@ const DEFAULT_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 const TILE_URL: string = import.meta.env.VITE_TILE_URL || DEFAULT_TILE_URL;
 const JOHANNESBURG: [number, number] = [28.0473, -26.2041];
 const LONG_PRESS_MS = 600;
+/** A click this close to the line (px) counts as a click on it. */
+const LINE_HIT_PX = 7;
+/** Room for the legend at the bottom when fitting the view to a route. */
+const FIT_PADDING = { top: 56, right: 56, bottom: 84, left: 56 };
 
 const ROUTE_COLOUR = '#0b6bcb';
 const FASTEST_COLOUR = '#7b8794';
+/** Layers a click can land on to insert a via point. */
+const LINE_LAYERS = ['your-route-line', 'sketch-line'];
 
 const STYLE: StyleSpecification = {
   version: 8,
@@ -71,6 +84,12 @@ function lineFeature(points: LatLng[] | undefined): GeoJSONData {
   };
 }
 
+function boundsOf(points: LatLng[]): LngLatBounds {
+  const bounds = new LngLatBounds();
+  points.forEach((p) => bounds.extend([p.lng, p.lat]));
+  return bounds;
+}
+
 function markerLabel(index: number, count: number): string {
   if (index === 0) return 'A';
   if (index === count - 1) return 'B';
@@ -83,15 +102,21 @@ function markerKind(index: number, count: number): 'start' | 'end' | 'via' {
   return 'via';
 }
 
-export function MapView({ points, geometry, fastestGeometry, onAddPoint, onMovePoint, onRemovePoint }: MapViewProps) {
+export function MapView({ points, geometry, fastestGeometry, stale = false, onAddPoint, onInsertPoint, onMovePoint, onRemovePoint }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const markersRef = useRef<Marker[]>([]);
   const [loaded, setLoaded] = useState(false);
 
-  // Keep latest callbacks in refs so map/marker listeners never go stale.
-  const callbacks = useRef({ onAddPoint, onMovePoint, onRemovePoint });
-  callbacks.current = { onAddPoint, onMovePoint, onRemovePoint };
+  // Keep the latest callbacks and points in refs so map/marker listeners never go stale.
+  const callbacks = useRef({ onAddPoint, onInsertPoint, onMovePoint, onRemovePoint });
+  callbacks.current = { onAddPoint, onInsertPoint, onMovePoint, onRemovePoint };
+  const pointsRef = useRef(points);
+  pointsRef.current = points;
+  /** Points as of the previous render, to tell which ones are new. */
+  const previousPoints = useRef<LatLng[]>([]);
+  /** The result bounds the view was last fitted to, so an identical result does not move the map again. */
+  const fittedTo = useRef('');
 
   // Create / destroy the map.
   useEffect(() => {
@@ -106,14 +131,20 @@ export function MapView({ points, geometry, fastestGeometry, onAddPoint, onMoveP
     map.addControl(new NavigationControl({ showCompass: false }), 'top-right');
 
     map.on('load', () => {
-      map.addSource('fastest-route', { type: 'geojson', data: lineFeature(undefined) });
-      map.addSource('your-route', { type: 'geojson', data: lineFeature(undefined) });
+      for (const id of ['fastest-route', 'sketch', 'your-route']) map.addSource(id, { type: 'geojson', data: lineFeature(undefined) });
       map.addLayer({
         id: 'fastest-route-line',
         type: 'line',
         source: 'fastest-route',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: { 'line-color': FASTEST_COLOUR, 'line-width': 4, 'line-dasharray': [2, 2], 'line-opacity': 0.9 },
+      });
+      map.addLayer({
+        id: 'sketch-line',
+        type: 'line',
+        source: 'sketch',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': ROUTE_COLOUR, 'line-width': 3, 'line-dasharray': [1, 2], 'line-opacity': 0.8 },
       });
       map.addLayer({
         id: 'your-route-casing',
@@ -132,10 +163,30 @@ export function MapView({ points, geometry, fastestGeometry, onAddPoint, onMoveP
       setLoaded(true);
     });
 
+    /** True when the pointer is on the user's route or sketch line (which exist only after 'load'). */
+    const onLine = (e: MapMouseEvent): boolean => {
+      if (pointsRef.current.length < 2 || !map.getLayer('your-route-line')) return false;
+      const { x, y } = e.point;
+      const box: [[number, number], [number, number]] = [
+        [x - LINE_HIT_PX, y - LINE_HIT_PX],
+        [x + LINE_HIT_PX, y + LINE_HIT_PX],
+      ];
+      return map.queryRenderedFeatures(box, { layers: LINE_LAYERS }).length > 0;
+    };
+
     map.on('click', (e: MapMouseEvent) => {
       const target = e.originalEvent?.target as Element | null;
       if (target?.closest?.('.route-marker')) return; // clicks on markers are not new points
-      callbacks.current.onAddPoint({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+      const p = { lat: e.lngLat.lat, lng: e.lngLat.lng };
+      if (onLine(e)) callbacks.current.onInsertPoint(insertionIndex(pointsRef.current, p), p);
+      else callbacks.current.onAddPoint(p);
+    });
+
+    // Show that the line is clickable: a click there adds a via point instead of a new destination.
+    map.on('mousemove', (e: MapMouseEvent) => {
+      const cursor = onLine(e) ? 'copy' : '';
+      const canvas = map.getCanvas();
+      if (canvas.style.cursor !== cursor) canvas.style.cursor = cursor;
     });
 
     return () => {
@@ -143,6 +194,8 @@ export function MapView({ points, geometry, fastestGeometry, onAddPoint, onMoveP
       markersRef.current = [];
       map.remove();
       mapRef.current = null;
+      previousPoints.current = [];
+      fittedTo.current = '';
       setLoaded(false);
     };
   }, []);
@@ -202,37 +255,69 @@ export function MapView({ points, geometry, fastestGeometry, onAddPoint, onMoveP
     return () => cleanups.forEach((fn) => fn());
   }, [points]);
 
+  // Bring points into view when they arrive from outside the map: a place search or a trip link.
+  // Points added by clicking or dragging are on screen already, so the view never moves under the cursor.
+  useEffect(() => {
+    const map = mapRef.current;
+    const previous = previousPoints.current;
+    previousPoints.current = points;
+    if (!map || points.length === 0) return;
+    const view = map.getBounds();
+    const added = points.filter((p) => !previous.some((q) => q.lat === p.lat && q.lng === p.lng));
+    if (added.every((p) => view.contains([p.lng, p.lat]))) return;
+    if (points.length === 1) {
+      map.easeTo({ center: [points[0].lng, points[0].lat], zoom: Math.max(map.getZoom(), 11), duration: 600 });
+    } else {
+      map.fitBounds(boundsOf(points), { padding: FIT_PADDING, duration: 600, maxZoom: 14 });
+    }
+  }, [points]);
+
+  const hasRoute = !!geometry && geometry.length > 1;
+  const hasFastest = !!fastestGeometry && fastestGeometry.length > 1;
+  /** Until a route exists for the current points, a straight-line sketch shows their order. */
+  const showSketch = points.length >= 2 && (!hasRoute || stale);
+
   // Update route lines.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loaded) return;
     (map.getSource('your-route') as GeoJSONSource | undefined)?.setData(lineFeature(geometry));
     (map.getSource('fastest-route') as GeoJSONSource | undefined)?.setData(lineFeature(fastestGeometry));
-  }, [geometry, fastestGeometry, loaded]);
+    (map.getSource('sketch') as GeoJSONSource | undefined)?.setData(lineFeature(showSketch ? points : undefined));
+    map.setPaintProperty('your-route-line', 'line-opacity', stale ? 0.3 : 1);
+    map.setPaintProperty('your-route-casing', 'line-opacity', stale ? 0.3 : 0.85);
+    map.setPaintProperty('fastest-route-line', 'line-opacity', stale ? 0.3 : 0.9);
+  }, [points, geometry, fastestGeometry, showSketch, stale, loaded]);
 
-  // Fit to a newly arrived result.
+  // Fit to a newly arrived result. The same result again (a re-priced trip) leaves the view alone.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !geometry || geometry.length < 2) return;
-    const bounds = new LngLatBounds();
-    [...geometry, ...(fastestGeometry ?? [])].forEach((p) => bounds.extend([p.lng, p.lat]));
-    map.fitBounds(bounds, { padding: 56, duration: 600, maxZoom: 16 });
+    const bounds = boundsOf([...geometry, ...(fastestGeometry ?? [])]);
+    const key = bounds.toArray().flat().join(',');
+    if (key === fittedTo.current) return;
+    fittedTo.current = key;
+    map.fitBounds(bounds, { padding: FIT_PADDING, duration: 600, maxZoom: 16 });
   }, [geometry, fastestGeometry]);
-
-  const hasRoute = !!geometry && geometry.length > 1;
-  const hasFastest = !!fastestGeometry && fastestGeometry.length > 1;
 
   return (
     <div className="map-view">
       <div ref={containerRef} className="map-canvas" role="region" aria-label="Route map. Click to add points." />
-      {hasRoute && (
+      {(hasRoute || showSketch) && (
         <div className="map-legend" aria-hidden="true">
-          <span className="legend-item">
-            <span className="legend-swatch legend-swatch--yours" /> Your route
-          </span>
-          {hasFastest && (
+          {hasRoute && (
+            <span className={`legend-item ${stale ? 'legend-item--stale' : ''}`}>
+              <span className="legend-swatch legend-swatch--yours" /> Your route{stale ? ' (out of date)' : ''}
+            </span>
+          )}
+          {hasFastest && !stale && (
             <span className="legend-item">
               <span className="legend-swatch legend-swatch--fastest" /> Fastest route
+            </span>
+          )}
+          {showSketch && (
+            <span className="legend-item">
+              <span className="legend-swatch legend-swatch--sketch" /> Your points, not yet calculated
             </span>
           )}
         </div>

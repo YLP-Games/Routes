@@ -7,6 +7,7 @@ import type {
   ApiError,
   FuelPrice,
   FuelType,
+  Place,
   PriceMonthSelector,
   PriceZone,
   RouteRequest,
@@ -70,6 +71,16 @@ export function searchVehicles(q: string, signal?: AbortSignal): Promise<Vehicle
   if (q.trim()) params.set('q', q.trim());
   const qs = params.toString();
   return request<Vehicle[]>(qs ? `${API_PATHS.vehicles}?${qs}` : API_PATHS.vehicles, { signal });
+}
+
+/** GET /api/vehicles/:id */
+export function getVehicle(id: string, signal?: AbortSignal): Promise<Vehicle> {
+  return request<Vehicle>(API_PATHS.vehicle(id), { signal });
+}
+
+/** GET /api/places?q= — best match first. */
+export function searchPlaces(q: string, signal?: AbortSignal): Promise<Place[]> {
+  return request<Place[]>(`${API_PATHS.places}?${new URLSearchParams({ q: q.trim() }).toString()}`, { signal });
 }
 
 /** GET /api/fuel-prices/months — 'YYYY-MM', newest first. */

@@ -1,16 +1,31 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { LatLng, RouteResponse } from './shared/types';
-import { calculateRoute, getHealth } from './lib/apiClient';
-import { DEFAULT_VEHICLE_CHOICE, fuelLabel, hasConsumption, zoneLabel, type VehicleChoice } from './lib/options';
-import { buildRouteRequest } from './lib/routeRequest';
-import { MapView } from './components/MapView';
+import { Component, Suspense, lazy, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import type { LatLng, Place, RouteResponse } from './shared/types';
+import { calculateRoute, getHealth, getVehicle } from './lib/apiClient';
+import {
+  DEFAULT_VEHICLE_CHOICE,
+  fuelLabel,
+  hasConsumption,
+  parseCustomConsumption,
+  zoneLabel,
+  type PriceMonthChoice,
+  type RoutePoint,
+  type VehicleChoice,
+} from './lib/options';
+import { buildRouteRequest, tripKey } from './lib/routeRequest';
+import { decodeTripLink, encodeTripLink } from './lib/tripLink';
 import { RouteBuilder } from './components/RouteBuilder';
+import { PlaceSearch } from './components/PlaceSearch';
 import { DepartureTimePicker } from './components/DepartureTimePicker';
 import { VehiclePicker } from './components/VehiclePicker';
-import { PriceMonthToggle, type PriceMonthChoice } from './components/PriceMonthToggle';
+import { PriceMonthToggle } from './components/PriceMonthToggle';
 import { TripSummary } from './components/TripSummary';
 import { FuelCostCard } from './components/FuelCostCard';
 import { Warnings } from './components/Warnings';
+
+// The map library is most of the app's JavaScript. As its own chunk it no longer holds up the
+// planner panel; the download starts right away rather than waiting for the first render.
+const mapModule = import('./components/MapView');
+const MapView = lazy(() => mapModule.then((m) => ({ default: m.MapView })));
 
 /** Matches the API limit on RouteRequest.points. */
 export const MAX_POINTS = 150;
@@ -18,23 +33,62 @@ export const MAX_POINTS = 150;
 interface CalculatedTrip {
   response: RouteResponse;
   fuelDescription: string;
+  /** tripKey of the inputs this result was calculated for. */
+  key: string;
+}
+
+/** Keeps the planner usable if the map chunk fails to load (offline, blocked CDN, old browser). */
+class MapBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div className="map-placeholder" role="alert">
+        The map could not be loaded. Reload the page to try again; you can still add places by searching.
+      </div>
+    );
+  }
 }
 
 export function App() {
-  const [points, setPoints] = useState<LatLng[]>([]);
-  const [departAt, setDepartAt] = useState<string | undefined>(undefined);
-  const [choice, setChoice] = useState<VehicleChoice>(DEFAULT_VEHICLE_CHOICE);
-  const [priceMonth, setPriceMonth] = useState<PriceMonthChoice>('current');
-  const [compareFastest, setCompareFastest] = useState(true);
+  // A trip link (#p=...&car=...) restores the planner: reloads keep the trip, and links can be shared.
+  const [link] = useState(() => decodeTripLink(window.location.hash));
+
+  const [points, setPoints] = useState<RoutePoint[]>(() => link?.points ?? []);
+  const [departAt, setDepartAt] = useState<string | undefined>(link?.departAt);
+  const [choice, setChoice] = useState<VehicleChoice>(() => ({
+    ...DEFAULT_VEHICLE_CHOICE,
+    fuel: link?.fuel ?? DEFAULT_VEHICLE_CHOICE.fuel,
+    zone: link?.zone ?? DEFAULT_VEHICLE_CHOICE.zone,
+    useCustom: link?.customConsumption !== undefined,
+    customConsumption: link?.customConsumption ?? '',
+  }));
+  const [priceMonth, setPriceMonth] = useState<PriceMonthChoice>(link?.priceMonth ?? 'current');
+  const [compareFastest, setCompareFastest] = useState(link?.compareFastest ?? true);
+  /** The linked car while its details are still loading, so the URL keeps it meanwhile. */
+  const [pendingVehicleId, setPendingVehicleId] = useState(link?.vehicleId);
+  /** A link that holds a complete trip calculates itself once, as soon as it can. */
+  const [autoCalculate, setAutoCalculate] = useState(
+    () => (link?.points.length ?? 0) >= 2 && (link?.vehicleId !== undefined || link?.customConsumption !== undefined),
+  );
 
   const [trip, setTrip] = useState<CalculatedTrip | null>(null);
-  const [stale, setStale] = useState(false);
   const [calculating, setCalculating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [demoMode, setDemoMode] = useState(false);
+  const [shareStatus, setShareStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
+  /** Bumped when a new result should be brought into view. */
+  const [revealCount, setRevealCount] = useState(0);
 
   const abortRef = useRef<AbortController | null>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const shareTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     getHealth()
@@ -42,27 +96,74 @@ export function App() {
       .catch(() => {
         // Health is informational only; calculate() surfaces real errors.
       });
-    return () => abortRef.current?.abort();
+    return () => {
+      abortRef.current?.abort();
+      clearTimeout(shareTimer.current);
+    };
   }, []);
 
-  const changePoints = useCallback((updater: (prev: LatLng[]) => LatLng[]) => {
+  // Load the car named in a trip link.
+  useEffect(() => {
+    const id = link?.vehicleId;
+    if (!id) return;
+    const controller = new AbortController();
+    getVehicle(id, controller.signal)
+      .then((vehicle) => {
+        setChoice((c) => (c.vehicle || c.useCustom ? c : { ...c, vehicle }));
+        setPendingVehicleId(undefined);
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setPendingVehicleId(undefined);
+        setAutoCalculate(false);
+        setNotice('The car in this link could not be loaded. Choose your car to continue.');
+      });
+    return () => controller.abort();
+  }, [link]);
+
+  // Keep the address bar in step with the trip, without adding history entries.
+  useEffect(() => {
+    const custom = choice.useCustom && parseCustomConsumption(choice.customConsumption) !== undefined ? choice.customConsumption : undefined;
+    const fragment = encodeTripLink({
+      points,
+      vehicleId: choice.useCustom ? undefined : choice.vehicle?.id ?? pendingVehicleId,
+      customConsumption: custom,
+      fuel: choice.fuel,
+      zone: choice.zone,
+      priceMonth,
+      compareFastest,
+      departAt,
+    });
+    const url = fragment ? `#${fragment}` : window.location.pathname + window.location.search;
+    window.history.replaceState(window.history.state, '', url);
+  }, [points, choice, priceMonth, compareFastest, departAt, pendingVehicleId]);
+
+  const changePoints = useCallback((updater: (prev: RoutePoint[]) => RoutePoint[]) => {
     setPoints((prev) => updater(prev));
-    setStale(true);
     setNotice(null);
   }, []);
 
-  const addPoint = useCallback(
-    (p: LatLng) => {
+  /** Adds a point at `index` (default: the end), unless the route is full. */
+  const insertPoint = useCallback(
+    (p: RoutePoint, index?: number) => {
       if (points.length >= MAX_POINTS) {
         setNotice(`You can add at most ${MAX_POINTS} points.`);
         return;
       }
-      changePoints((prev) => (prev.length >= MAX_POINTS ? prev : [...prev, p]));
+      changePoints((prev) => {
+        if (prev.length >= MAX_POINTS) return prev;
+        const at = index === undefined ? prev.length : Math.min(Math.max(index, 0), prev.length);
+        return [...prev.slice(0, at), p, ...prev.slice(at)];
+      });
     },
     [points.length, changePoints],
   );
+  const addPoint = useCallback((p: LatLng) => insertPoint(p), [insertPoint]);
+  const insertPointAt = useCallback((index: number, p: LatLng) => insertPoint(p, index), [insertPoint]);
+  const addPlace = useCallback((place: Place) => insertPoint({ lat: place.lat, lng: place.lng, label: place.name }), [insertPoint]);
+  // A dragged point is no longer the place it was named after, so it goes back to plain coordinates.
   const movePoint = useCallback(
-    (index: number, p: LatLng) => changePoints((prev) => prev.map((q, i) => (i === index ? p : q))),
+    (index: number, p: LatLng) => changePoints((prev) => prev.map((q, i) => (i === index ? { lat: p.lat, lng: p.lng } : q))),
     [changePoints],
   );
   const removePoint = useCallback((index: number) => changePoints((prev) => prev.filter((_, i) => i !== index)), [changePoints]);
@@ -80,14 +181,16 @@ export function App() {
   const clearPoints = useCallback(() => {
     setPoints([]);
     setTrip(null);
-    setStale(false);
     setError(null);
     setNotice(null);
   }, []);
 
   const canCalculate = points.length >= 2 && hasConsumption(choice);
+  // The result on screen is out of date as soon as anything it depends on differs from what it was
+  // calculated for: points, car, fuel, zone, departure, price month or the comparison option.
+  const stale = trip !== null && trip.key !== tripKey({ points, departAt, choice, priceMonth, compareFastest });
 
-  async function calculate(month: PriceMonthChoice = priceMonth) {
+  async function calculate(month: PriceMonthChoice = priceMonth, reveal = true) {
     if (!canCalculate) return;
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -100,8 +203,8 @@ export function App() {
     try {
       const response = await calculateRoute(request, controller.signal);
       if (controller.signal.aborted) return;
-      setTrip({ response, fuelDescription: `${fuelLabel(choice.fuel)} · ${zoneLabel(choice.zone)}` });
-      setStale(false);
+      setTrip({ response, fuelDescription: `${fuelLabel(choice.fuel)} · ${zoneLabel(choice.zone)}`, key: JSON.stringify(request) });
+      if (reveal) setRevealCount((n) => n + 1);
     } catch (err) {
       if (controller.signal.aborted) return;
       setError(err instanceof Error ? err.message : 'Something went wrong while calculating the trip.');
@@ -113,12 +216,41 @@ export function App() {
     }
   }
 
+  useEffect(() => {
+    if (!autoCalculate || !canCalculate) return;
+    setAutoCalculate(false);
+    void calculate();
+    // Runs once, when a linked trip first becomes calculable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoCalculate, canCalculate]);
+
+  // Bring a new result into view: on a phone, and on a short desktop window, it lands below the fold.
+  useEffect(() => {
+    if (revealCount === 0) return;
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    resultsRef.current?.scrollIntoView?.({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+  }, [revealCount]);
+
   function changePriceMonth(next: PriceMonthChoice) {
     setPriceMonth(next);
-    if (trip && canCalculate) void calculate(next);
+    // Re-price the trip on screen straight away, but only if nothing else is waiting to be applied:
+    // otherwise a price toggle would silently recalculate for a different car or route.
+    if (trip && canCalculate && !stale) void calculate(next, false);
+  }
+
+  async function copyLink() {
+    clearTimeout(shareTimer.current);
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setShareStatus('copied');
+    } catch {
+      setShareStatus('failed');
+    }
+    shareTimer.current = setTimeout(() => setShareStatus('idle'), 4000);
   }
 
   const result = trip?.response;
+  const searchLabel = points.length === 0 ? 'Search for a starting place' : points.length === 1 ? 'Search for a destination' : 'Search for another place to add';
 
   return (
     <div className="app">
@@ -133,11 +265,13 @@ export function App() {
           points={points}
           hasConsumption={hasConsumption(choice)}
           calculating={calculating}
+          stale={stale}
           onRemove={removePoint}
           onMove={reorderPoint}
           onClear={clearPoints}
           onCalculate={() => void calculate()}
         >
+          <PlaceSearch onSelect={addPlace} label={searchLabel} />
           {notice && <p className="hint hint--small">{notice}</p>}
         </RouteBuilder>
 
@@ -158,31 +292,58 @@ export function App() {
           </div>
         )}
 
-        <div className="results" aria-live="polite" aria-busy={calculating}>
+        <div ref={resultsRef} className={`results ${stale ? 'results--stale' : ''}`} aria-live="polite" aria-busy={calculating}>
           {calculating && !result && <p className="muted loading">Calculating your trip…</p>}
           {result && (
             <>
+              {stale && (
+                <p className="stale-note">
+                  {canCalculate
+                    ? 'Your trip details changed since this was calculated — press Update trip to refresh the figures.'
+                    : 'Your trip details changed since this was calculated. These figures are for the earlier trip.'}
+                </p>
+              )}
               <Warnings warnings={result.warnings} />
-              {stale && <p className="stale-note">Your points changed — press Calculate trip to update.</p>}
               <TripSummary yourRoute={result.yourRoute} fastestRoute={result.fastestRoute} />
               <FuelCostCard fuel={result.yourRoute.fuel} fuelDescription={trip?.fuelDescription} />
               <p className="muted hint--small source-line">
                 Traffic data: {result.provider === 'tomtom' ? 'TomTom' : 'demo (simulated)'}. Fuel prices: South African regulated retail prices.
               </p>
+              <div className="share-row">
+                <button type="button" className="btn btn-ghost btn-small" onClick={() => void copyLink()}>
+                  Copy link to this trip
+                </button>
+                <span className="muted hint--small" aria-live="polite">
+                  {shareStatus === 'copied' && 'Link copied.'}
+                  {shareStatus === 'failed' && 'Could not copy. The link is in your address bar.'}
+                </span>
+              </div>
             </>
           )}
         </div>
       </aside>
 
       <main className="map-area">
-        <MapView
-          points={points}
-          geometry={result?.yourRoute.geometry}
-          fastestGeometry={result?.fastestRoute?.geometry}
-          onAddPoint={addPoint}
-          onMovePoint={movePoint}
-          onRemovePoint={removePoint}
-        />
+        <MapBoundary>
+          <Suspense
+            fallback={
+              <div className="map-placeholder" aria-live="polite">
+                Loading map…
+              </div>
+            }
+          >
+            <MapView
+              points={points}
+              geometry={result?.yourRoute.geometry}
+              fastestGeometry={result?.fastestRoute?.geometry}
+              stale={stale}
+              onAddPoint={addPoint}
+              onInsertPoint={insertPointAt}
+              onMovePoint={movePoint}
+              onRemovePoint={removePoint}
+            />
+          </Suspense>
+        </MapBoundary>
       </main>
     </div>
   );

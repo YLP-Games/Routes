@@ -1,12 +1,14 @@
 import type { ReactNode } from 'react';
-import type { LatLng } from '../shared/types';
 import { formatLatLng } from '../lib/format';
+import type { RoutePoint } from '../lib/options';
 
 export interface RouteBuilderProps {
-  points: LatLng[];
+  points: RoutePoint[];
   /** True when a vehicle or a valid custom consumption has been chosen. */
   hasConsumption: boolean;
   calculating?: boolean;
+  /** True when a result is on screen that no longer matches the inputs. */
+  stale?: boolean;
   onRemove: (index: number) => void;
   onMove: (index: number, direction: -1 | 1) => void;
   onClear: () => void;
@@ -31,6 +33,7 @@ export function RouteBuilder({
   points,
   hasConsumption,
   calculating = false,
+  stale = false,
   onRemove,
   onMove,
   onClear,
@@ -53,7 +56,10 @@ export function RouteBuilder({
           </button>
         )}
       </div>
-      <p className="hint">Click the map to add points in order — start, any via points, then your destination. Drag markers to adjust.</p>
+      <p className="hint">
+        Search for a place or click the map to add points in order — start, any via points, then your destination. Drag a marker to move it,
+        or click the line to add a via point in between.
+      </p>
 
       {points.length > 0 && (
         <ol className="point-list">
@@ -66,7 +72,9 @@ export function RouteBuilder({
                 </span>
                 <span className="point-text">
                   <span className="point-name">{name}</span>
-                  <span className="point-coords">{formatLatLng(p)}</span>
+                  <span className="point-coords" title={p.label ? `${p.label} (${formatLatLng(p)})` : undefined}>
+                    {p.label ?? formatLatLng(p)}
+                  </span>
                 </span>
                 <span className="point-actions">
                   <button
@@ -108,7 +116,7 @@ export function RouteBuilder({
       {children}
 
       <button type="button" className="btn btn-primary btn-block" disabled={disabled} onClick={onCalculate} aria-describedby={reason ? 'calc-reason' : undefined}>
-        {calculating ? 'Calculating…' : 'Calculate trip'}
+        {calculating ? 'Calculating…' : stale ? 'Update trip' : 'Calculate trip'}
       </button>
       {reason && (
         <p id="calc-reason" className="hint hint--small">

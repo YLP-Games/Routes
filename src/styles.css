@@ -580,7 +580,9 @@ fieldset:disabled .segment {
 
 /* ---------- Map ---------- */
 .map-view,
-.map-canvas {
+.map-view .map-canvas {
+  /* The map library's stylesheet loads later (with the map chunk) and sets position: relative on
+     the container; the extra class keeps this rule ahead of it, so the map still fills its area. */
   position: absolute;
   inset: 0;
 }
@@ -645,4 +647,44 @@ fieldset:disabled .segment {
   width: 22px;
   height: 22px;
   font-size: 11px;
+}
+
+/* ---------- Route editing, stale results, sharing ---------- */
+.map-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+  background: var(--surface-2);
+}
+.map-legend {
+  flex-wrap: wrap;
+  max-width: calc(100% - 20px);
+}
+.legend-swatch--sketch {
+  border-top: 3px dotted #0b6bcb;
+}
+.legend-item--stale {
+  opacity: 0.6;
+}
+/* Figures that no longer match the inputs step back, so they are not mistaken for the current trip. */
+.results--stale .card,
+.results--stale .source-line {
+  opacity: 0.55;
+}
+.share-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 2px;
+}
+@media (max-width: 767px) {
+  /* The result is scrolled to after calculating; leave the sticky-free header a little air. */
+  .results {
+    scroll-margin-top: 8px;
+  }
 }

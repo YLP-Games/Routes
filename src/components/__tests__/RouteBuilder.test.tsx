@@ -25,7 +25,7 @@ const calcButton = () => screen.getByRole('button', { name: /Calculate trip|Calc
 describe('RouteBuilder', () => {
   it('shows the hint and disables Calculate with no points', () => {
     setup({ hasConsumption: true });
-    expect(screen.getByText(/Click the map to add points in order/)).toBeInTheDocument();
+    expect(screen.getByText(/click the map to add points in order/)).toBeInTheDocument();
     expect(calcButton()).toBeDisabled();
   });
 
@@ -51,6 +51,18 @@ describe('RouteBuilder', () => {
     setup({ points: [A, B], hasConsumption: true, calculating: true });
     expect(calcButton()).toBeDisabled();
     expect(calcButton()).toHaveTextContent('Calculating…');
+  });
+
+  it('shows a place name instead of coordinates for a searched point', () => {
+    setup({ points: [{ ...A, label: 'Johannesburg' }, B], hasConsumption: true });
+    expect(screen.getByText('Johannesburg')).toHaveAttribute('title', 'Johannesburg (-26.2041, 28.0473)');
+    expect(screen.queryByText('-26.2041, 28.0473')).not.toBeInTheDocument();
+    expect(screen.getByText('-25.7479, 28.2293')).toBeInTheDocument();
+  });
+
+  it('offers "Update trip" when the result on screen is out of date', () => {
+    setup({ points: [A, B], hasConsumption: true, stale: true });
+    expect(screen.getByRole('button', { name: 'Update trip' })).toBeEnabled();
   });
 
   it('labels points Start / Via / End and removes, moves and clears them', async () => {
