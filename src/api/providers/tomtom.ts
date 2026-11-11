@@ -87,7 +87,12 @@ export function parseTomTomResponse(body: TomTomResponse): ProviderRouteResult {
   const route = body.routes?.[0];
   if (!route) throw new ProviderError('TomTom returned no route for these points');
   const s = route.summary;
-  const delay = s.trafficDelayInSeconds ?? 0;
+  // "Traffic delay" is the with-traffic time minus the free-flow time, so the three figures the UI
+  // shows always add up (the mock provider and the fallback fuel model assume the same). TomTom's
+  // own trafficDelayInSeconds is a separate figure that need not equal that difference, so it is
+  // only used when TomTom omits the free-flow time.
+  const noTraffic = s.noTrafficTravelTimeInSeconds;
+  const delay = Math.max(0, noTraffic !== undefined ? s.travelTimeInSeconds - noTraffic : s.trafficDelayInSeconds ?? 0);
   const geometry: LatLng[] = [];
   for (const leg of route.legs ?? []) {
     for (const p of leg.points ?? []) geometry.push({ lat: p.latitude, lng: p.longitude });
@@ -95,7 +100,7 @@ export function parseTomTomResponse(body: TomTomResponse): ProviderRouteResult {
   const result: ProviderRouteResult = {
     distanceMeters: s.lengthInMeters,
     travelTimeSeconds: s.travelTimeInSeconds,
-    noTrafficTravelTimeSeconds: s.noTrafficTravelTimeInSeconds ?? Math.max(0, s.travelTimeInSeconds - delay),
+    noTrafficTravelTimeSeconds: noTraffic ?? Math.max(0, s.travelTimeInSeconds - delay),
     trafficDelaySeconds: delay,
     departureTime: new Date(s.departureTime).toISOString(),
     arrivalTime: new Date(s.arrivalTime).toISOString(),

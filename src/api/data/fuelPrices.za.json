@@ -1,5 +1,61 @@
 [
   {
+    "month": "2026-11",
+    "effectiveDate": "2026-11-04",
+    "zone": "inland",
+    "fuel": "petrol95",
+    "randsPerLitre": 30.24,
+    "source": "https://www.citizen.co.za/network-news/motoring/2026/11/03/official-fuel-prices-for-november-announced/ (The Citizen, DMPR prices, 2026-11-03); https://topauto.co.za/news/167687/official-petrol-price-for-november-announced-2/ (TopAuto, DMPR prices, 2026-11-03); Oct price less 1c"
+  },
+  {
+    "month": "2026-11",
+    "effectiveDate": "2026-11-04",
+    "zone": "inland",
+    "fuel": "petrol93",
+    "randsPerLitre": 29.87,
+    "source": "https://www.citizen.co.za/network-news/motoring/2026/11/03/official-fuel-prices-for-november-announced/ (The Citizen, DMPR prices, 2026-11-03); https://topauto.co.za/news/167687/official-petrol-price-for-november-announced-2/ (TopAuto, DMPR prices, 2026-11-03); Oct price less 1c"
+  },
+  {
+    "month": "2026-11",
+    "effectiveDate": "2026-11-04",
+    "zone": "coastal",
+    "fuel": "petrol95",
+    "randsPerLitre": 29.37,
+    "source": "https://www.citizen.co.za/network-news/motoring/2026/11/03/official-fuel-prices-for-november-announced/ (The Citizen, DMPR prices, 2026-11-03); https://topauto.co.za/news/167687/official-petrol-price-for-november-announced-2/ (TopAuto, DMPR prices, 2026-11-03); Oct price less 1c"
+  },
+  {
+    "month": "2026-11",
+    "effectiveDate": "2026-11-04",
+    "zone": "coastal",
+    "fuel": "petrol93",
+    "randsPerLitre": 29.08,
+    "source": "https://topauto.co.za/news/167687/official-petrol-price-for-november-announced-2/ (TopAuto, DMPR prices, 2026-11-03); Oct price less 1c"
+  },
+  {
+    "month": "2026-11",
+    "effectiveDate": "2026-11-04",
+    "zone": "inland",
+    "fuel": "diesel500ppm",
+    "randsPerLitre": 30.85,
+    "source": "https://www.citizen.co.za/network-news/motoring/2026/11/03/official-fuel-prices-for-november-announced/ (The Citizen, DMPR prices, 2026-11-03); https://topauto.co.za/news/167687/official-petrol-price-for-november-announced-2/ (TopAuto, DMPR prices, 2026-11-03); Oct price less 109.82c - wholesale price (retail diesel is not regulated)"
+  },
+  {
+    "month": "2026-11",
+    "effectiveDate": "2026-11-04",
+    "zone": "coastal",
+    "fuel": "diesel500ppm",
+    "randsPerLitre": 29.98,
+    "source": "https://topauto.co.za/news/167687/official-petrol-price-for-november-announced-2/ (TopAuto, DMPR prices, 2026-11-03); Oct price less 109.82c - wholesale price (retail diesel is not regulated)"
+  },
+  {
+    "month": "2026-11",
+    "effectiveDate": "2026-11-04",
+    "zone": "coastal",
+    "fuel": "diesel50ppm",
+    "randsPerLitre": 30.83,
+    "source": "https://topauto.co.za/news/167687/official-petrol-price-for-november-announced-2/ (TopAuto, DMPR prices, 2026-11-03); Oct price less 119.82c - wholesale price (retail diesel is not regulated)"
+  },
+  {
     "month": "2026-10",
     "effectiveDate": "2026-10-07",
     "zone": "inland",

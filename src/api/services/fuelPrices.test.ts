@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FuelPrice } from '../../shared/types';
 import { HttpError } from '../errors';
-import { FUEL_PRICES, createFuelPriceService, fuelPrices, saDate } from './fuelPrices';
+import { FUEL_PRICES, createFuelPriceService, firstWednesday, fuelPrices, nextMonth, saDate } from './fuelPrices';
 
 const p = (month: string, effectiveDate: string, zone: FuelPrice['zone'], fuel: FuelPrice['fuel'], r: number): FuelPrice => ({
   month, effectiveDate, zone, fuel, randsPerLitre: r, source: 'test',
@@ -78,6 +78,31 @@ describe('fuel price service', () => {
     expect(svc.listPrices({ month: 'current', fuel: 'petrol95' }, now).map((x) => x.randsPerLitre)).toEqual([30.25]);
     expect(svc.listPrices({ zone: 'coastal' }, now)).toHaveLength(1);
     expect(svc.listPrices({}, now)[0].month).toBe('2026-10');
+  });
+
+  it('finds the first Wednesday of a month and the following month', () => {
+    expect(firstWednesday('2026-09')).toBe('2026-09-02');
+    expect(firstWednesday('2026-10')).toBe('2026-10-07');
+    expect(firstWednesday('2026-11')).toBe('2026-11-04');
+    expect(firstWednesday('2027-07')).toBe('2027-07-07');
+    expect(firstWednesday('2026-04')).toBe('2026-04-01');
+    expect(nextMonth('2026-11')).toBe('2026-12');
+    expect(nextMonth('2026-12')).toBe('2027-01');
+  });
+
+  it('warns once the next adjustment date has passed without new prices on file', () => {
+    // The table ends at October; November's prices were due on Wednesday 4 November.
+    expect(svc.staleWarning(new Date('2026-10-19T08:00:00Z'))).toBeUndefined();
+    expect(svc.staleWarning(new Date('2026-11-03T12:00:00Z'))).toBeUndefined();
+    expect(svc.staleWarning(new Date('2026-11-03T22:30:00Z'))).toMatch(/October 2026.*2026-11-04/); // already the 4th in SA
+    expect(svc.staleWarning(new Date('2026-11-10T08:00:00Z'))).toMatch(/out of date/);
+    // Next month's rows on file but not yet effective: up to date.
+    const ahead = createFuelPriceService([p('2026-10', '2026-10-07', 'inland', 'petrol95', 30.25), p('2026-11', '2026-11-04', 'inland', 'petrol95', 30.24)]);
+    expect(ahead.staleWarning(new Date('2026-11-02T08:00:00Z'))).toBeUndefined();
+    expect(ahead.staleWarning(new Date('2026-11-10T08:00:00Z'))).toBeUndefined();
+    expect(ahead.staleWarning(new Date('2026-12-02T08:00:00Z'))).toMatch(/November 2026.*2026-12-02/);
+    // Nothing effective yet: nothing to say.
+    expect(svc.staleWarning(new Date('2020-01-01T00:00:00Z'))).toBeUndefined();
   });
 
   it('computes the South African calendar date', () => {

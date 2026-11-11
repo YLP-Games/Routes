@@ -49,6 +49,10 @@ export async function planRoute(req: ParsedRouteRequest, deps: PlannerDeps): Pro
   const month = deps.fuelPrices.resolveMonth(req.priceMonth, now);
   const { price, warning: priceWarning } = deps.fuelPrices.getPrice(month, req.zone, req.fuel);
   if (priceWarning) warnings.push(priceWarning);
+  if (req.priceMonth === 'current') {
+    const stale = deps.fuelPrices.staleWarning(now);
+    if (stale) warnings.push(stale);
+  }
   if (fuelType === 'diesel') warnings.push(DIESEL_WHOLESALE_WARNING);
 
   let departAt = req.departAt;

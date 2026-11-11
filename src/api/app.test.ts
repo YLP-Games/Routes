@@ -5,6 +5,7 @@ import { createApp } from './app';
 import { ProviderError } from './errors';
 import { createMockProvider } from './providers/mock';
 import type { RoutingProvider } from './providers/types';
+import { FUEL_PRICES, createFuelPriceService } from './services/fuelPrices';
 import { DIESEL_WHOLESALE_WARNING, MOCK_WARNING } from './services/routePlanner';
 
 const NOW = new Date('2026-10-19T08:00:00.000Z');
@@ -225,7 +226,25 @@ describe('GET /api/fuel-prices', () => {
   it('lists months newest first', async () => {
     const res = await request(app).get('/api/fuel-prices/months');
     expect(res.status).toBe(200);
-    expect(res.body.slice(0, 2)).toEqual(['2026-10', '2026-09']);
+    const months = res.body as string[];
+    expect(months).toEqual([...months].sort().reverse());
+    expect(months).toEqual(expect.arrayContaining(['2026-11', '2026-10', '2026-09']));
+  });
+
+  it('warns on a current-price trip once the table has fallen behind, and not before', async () => {
+    const octoberOnly = createFuelPriceService(FUEL_PRICES.filter((p) => p.month <= '2026-10'));
+    const at = (iso: string) => createApp({ provider: createMockProvider({ now: () => new Date(iso) }), now: () => new Date(iso), fuelPrices: octoberOnly });
+    const stale = (res: { body: RouteResponse }) => res.body.warnings.filter((w) => w.includes('out of date'));
+
+    // 10 November: the adjustment due on Wednesday 4 November is not on file.
+    const late = await request(at('2026-11-10T08:00:00Z')).post('/api/route').send(baseBody);
+    expect(late.body.yourRoute.fuel.priceMonth).toBe('2026-10');
+    expect(stale(late)).toEqual(['Fuel prices may be out of date: the newest on file are for October 2026, but prices were due to change on 2026-11-04']);
+    // Asking for an explicit or previous month is a deliberate choice: no warning.
+    expect(stale(await request(at('2026-11-10T08:00:00Z')).post('/api/route').send({ ...baseBody, priceMonth: 'previous' }))).toEqual([]);
+    expect(stale(await request(at('2026-10-19T08:00:00Z')).post('/api/route').send(baseBody))).toEqual([]);
+    // With the bundled table (November on file) the same date is up to date.
+    expect(stale(await request(createApp({ provider: createMockProvider(), now: () => new Date('2026-11-10T08:00:00Z') })).post('/api/route').send(baseBody))).toEqual([]);
   });
 
   it('filters by month, zone and fuel', async () => {

@@ -130,7 +130,8 @@ describe('TomTom provider', () => {
     expect(r).toMatchObject({
       distanceMeters: 58412,
       travelTimeSeconds: 3125,
-      trafficDelaySeconds: 412,
+      // With-traffic minus free-flow (3125 - 2650), not TomTom's separate 412 s incident figure.
+      trafficDelaySeconds: 475,
       noTrafficTravelTimeSeconds: 2650,
       departureTime: '2026-10-19T06:00:00.000Z',
       arrivalTime: '2026-10-19T06:52:05.000Z',
@@ -147,7 +148,22 @@ describe('TomTom provider', () => {
     stubFetch(200, { routes: [{ ...sample.routes[0], summary }] });
     const r = await createTomTomProvider({ apiKey: KEY }).calculate({ points, fuelType: 'petrol' });
     expect(r.noTrafficTravelTimeSeconds).toBe(3125 - 412);
+    expect(r.trafficDelaySeconds).toBe(412);
     expect(r.fuelLitres).toBeUndefined();
+  });
+
+  it('keeps travel time = free-flow time + delay, and never reports a negative delay', async () => {
+    stubFetch(200, sample);
+    const r = await createTomTomProvider({ apiKey: KEY }).calculate({ points, fuelType: 'petrol' });
+    expect(r.noTrafficTravelTimeSeconds + r.trafficDelaySeconds).toBe(r.travelTimeSeconds);
+
+    // A future departure: TomTom reports no incident delay although the ETA includes typical congestion.
+    const summary = { ...sample.routes[0].summary, trafficDelayInSeconds: 0 };
+    stubFetch(200, { routes: [{ ...sample.routes[0], summary }] });
+    expect((await createTomTomProvider({ apiKey: KEY }).calculate({ points, fuelType: 'petrol' })).trafficDelaySeconds).toBe(475);
+
+    stubFetch(200, { routes: [{ ...sample.routes[0], summary: { ...summary, noTrafficTravelTimeInSeconds: 3200 } }] });
+    expect((await createTomTomProvider({ apiKey: KEY }).calculate({ points, fuelType: 'petrol' })).trafficDelaySeconds).toBe(0);
   });
 
   it('maps TomTom errors to a 502 ProviderError without leaking the key', async () => {
