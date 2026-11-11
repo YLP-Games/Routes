@@ -1,5 +1,8 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import request from 'supertest';
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import type { FuelPrice, RouteResponse, Vehicle } from '../shared/types';
 import { createApp } from './app';
 import { ProviderError } from './errors';
@@ -269,6 +272,96 @@ describe('GET /api/fuel-prices', () => {
     const res = await request(app).get('/api/fuel-prices').query({ month: '2019-01' });
     expect(res.status).toBe(404);
     expect(res.body.error.code).toBe('PRICE_MONTH_NOT_FOUND');
+  });
+});
+
+describe('GET /api/places', () => {
+  it('searches the offline list by default', async () => {
+    const res = await request(app).get('/api/places').query({ q: 'stellenbosch' });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([{ name: 'Stellenbosch', detail: 'Western Cape', lat: -33.9321, lng: 18.8602 }]);
+    expect((await request(app).get('/api/places').query({ q: 'zzzz' })).body).toEqual([]);
+  });
+
+  it('uses the configured search provider and maps its failures to 502', async () => {
+    const search = vi.fn(async (q: string) => [{ name: `Result for ${q}`, lat: -26, lng: 28 }]);
+    const withSearch = createApp({ provider: createMockProvider({ now }), now, places: { name: 'tomtom', search } });
+    const res = await request(withSearch).get('/api/places').query({ q: '  12 Main Rd ' });
+    expect(res.body).toEqual([{ name: 'Result for 12 Main Rd', lat: -26, lng: 28 }]);
+    expect(search).toHaveBeenCalledWith('12 Main Rd');
+
+    const failing = createApp({ now, places: { name: 'tomtom', search: async () => { throw new ProviderError('TomTom place search failed (403)'); } } });
+    const bad = await request(failing).get('/api/places').query({ q: 'sandton' });
+    expect(bad.status).toBe(502);
+    expect(bad.body.error).toEqual({ code: 'PROVIDER_ERROR', message: 'TomTom place search failed (403)' });
+  });
+
+  it('400 for a missing, too short or repeated q', async () => {
+    for (const query of [{}, { q: 'a' }, { q: ' a ' }, { q: 'x'.repeat(101) }, 'q=aa&q=bb']) {
+      const res = await request(app).get('/api/places').query(query);
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    }
+  });
+});
+
+describe('transport', () => {
+  it('compresses large responses for clients that accept it', async () => {
+    const res = await request(app).get('/api/vehicles').set('Accept-Encoding', 'gzip');
+    expect(res.headers['content-encoding']).toBe('gzip');
+    expect(res.body.length).toBeGreaterThan(30); // supertest decodes it transparently
+    const plain = await request(app).get('/api/vehicles').set('Accept-Encoding', 'identity');
+    expect(plain.headers['content-encoding']).toBeUndefined();
+  });
+
+  it('sends no CORS headers unless origins are configured', async () => {
+    const res = await request(app).get('/api/health').set('Origin', 'https://elsewhere.example');
+    expect(res.headers['access-control-allow-origin']).toBeUndefined();
+
+    const allowed = createApp({ now, corsOrigins: ['https://routes.example'] });
+    const ok = await request(allowed).get('/api/health').set('Origin', 'https://routes.example');
+    expect(ok.headers['access-control-allow-origin']).toBe('https://routes.example');
+    const other = await request(allowed).get('/api/health').set('Origin', 'https://elsewhere.example');
+    expect(other.headers['access-control-allow-origin']).toBeUndefined();
+  });
+});
+
+describe('serving the built frontend', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'routes-dist-'));
+  mkdirSync(join(dir, 'assets'));
+  writeFileSync(join(dir, 'index.html'), '<!doctype html><title>Routes</title><div id="root"></div>');
+  writeFileSync(join(dir, 'assets', 'index-abc123.js'), 'console.log("app")');
+  const withStatic = createApp({ now, staticDir: dir });
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('serves the app shell for page requests, without long-term caching', async () => {
+    for (const path of ['/', '/some/deep/link', '/apiary']) {
+      const res = await request(withStatic).get(path);
+      expect(res.status).toBe(200);
+      expect(res.text).toContain('<div id="root">');
+      expect(res.headers['cache-control']).toBe('no-cache');
+    }
+  });
+
+  it('serves fingerprinted assets as immutable', async () => {
+    const res = await request(withStatic).get('/assets/index-abc123.js');
+    expect(res.status).toBe(200);
+    expect(res.text).toBe('console.log("app")');
+    expect(res.headers['cache-control']).toBe('public, max-age=31536000, immutable');
+  });
+
+  it('keeps the API and its JSON 404 intact', async () => {
+    expect((await request(withStatic).get('/api/health')).body).toEqual({ ok: true, provider: 'mock' });
+    for (const path of ['/api/nope', '/api']) {
+      const res = await request(withStatic).get(path);
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('NOT_FOUND');
+    }
+    expect((await request(withStatic).post('/some/page')).status).toBe(404);
+  });
+
+  it('serves no pages when no build is configured', async () => {
+    expect((await request(app).get('/')).status).toBe(404);
   });
 });
 

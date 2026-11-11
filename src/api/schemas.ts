@@ -34,6 +34,10 @@ export type ParsedRouteRequest = z.infer<typeof routeRequestSchema>;
 
 export const vehiclesQuerySchema = z.object({ q: z.string().max(100).optional() });
 
+export const placesQuerySchema = z.object({
+  q: z.string().trim().min(2, 'Type at least 2 characters').max(100),
+});
+
 export const fuelPricesQuerySchema = z.object({
   month: monthSelectorSchema.optional(),
   zone: zoneSchema.optional(),

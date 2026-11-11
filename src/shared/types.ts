@@ -30,6 +30,13 @@ export interface FuelPrice {
   randsPerLitre: number; source: string;
 }
 
+/** A place search result that can be added as a route point. */
+export interface Place {
+  name: string;     // e.g. 'Sandton' or a street address
+  detail?: string;  // e.g. 'Johannesburg, Gauteng'
+  lat: number; lng: number;
+}
+
 /** Body of POST /api/route. */
 export interface RouteRequest {
   points: LatLng[];                 // user's route: origin, shaping points..., destination (min 2, max 150)
