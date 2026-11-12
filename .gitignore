@@ -4,3 +4,8 @@ dist-server
 .env
 coverage
 *.log
+
+# The design skill installed by `npx skills add` (40 MB of third-party files). skills-lock.json
+# records it; restore with `npx skills experimental_install`.
+.agents/skills/design-taste-frontend
+.claude/skills/design-taste-frontend

@@ -81,6 +81,18 @@ must be revoked, not just deleted.
 Without a TomTom key, place search uses a bundled list of South African towns and airports
 (`src/api/data/places.za.json`, approximate town-centre coordinates) and routes are straight lines.
 
+## Design system
+
+The interface follows one set of rules, written at the top of `src/styles.css`: a neutral ground
+and ink with a single accent, one radius scale, one filled button, and buttons that step on hover
+and press on click. The palette and typeface came from the `design-taste-frontend` skill
+(`Leonxlnx/taste-skill`), recorded in `skills-lock.json`. The skill's files are not in the
+repository; to work on the design with it again, restore them:
+
+```sh
+npx skills experimental_install
+```
+
 ## Folder ownership
 
 - `src/components` - UI (React components)
