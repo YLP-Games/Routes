@@ -11,8 +11,11 @@ import {
   type RoutePoint,
   type VehicleChoice,
 } from './lib/options';
+import { formatDuration, formatRands } from './lib/format';
 import { buildRouteRequest, tripKey } from './lib/routeRequest';
 import { decodeTripLink, encodeTripLink } from './lib/tripLink';
+import { ActionBar } from './components/ActionBar';
+import { BrandMark, Icon } from './components/Icon';
 import { RouteBuilder } from './components/RouteBuilder';
 import { PlaceSearch } from './components/PlaceSearch';
 import { DepartureTimePicker } from './components/DepartureTimePicker';
@@ -255,24 +258,19 @@ export function App() {
   return (
     <div className="app">
       <aside className="panel" aria-label="Trip planner">
+        <div className="panel-scroll">
         <header className="app-header">
-          <h1>Routes</h1>
-          <p className="tagline">Draw your own route. Get the real traffic ETA and fuel cost in rands.</p>
-          {demoMode && <span className="badge">Demo mode</span>}
+          <div className="brand">
+            <BrandMark />
+            <h1>Routes</h1>
+            {demoMode && <span className="badge">Demo mode</span>}
+          </div>
+          <p className="tagline">Draw your own route. Get the traffic ETA and the fuel cost in rands.</p>
         </header>
 
-        <RouteBuilder
-          points={points}
-          hasConsumption={hasConsumption(choice)}
-          calculating={calculating}
-          stale={stale}
-          onRemove={removePoint}
-          onMove={reorderPoint}
-          onClear={clearPoints}
-          onCalculate={() => void calculate()}
-        >
+        <RouteBuilder points={points} onRemove={removePoint} onMove={reorderPoint} onClear={clearPoints}>
           <PlaceSearch onSelect={addPlace} label={searchLabel} />
-          {notice && <p className="hint hint--small">{notice}</p>}
+          {notice && <p className="notice">{notice}</p>}
         </RouteBuilder>
 
         <VehiclePicker value={choice} onChange={setChoice} />
@@ -310,7 +308,8 @@ export function App() {
                 Traffic data: {result.provider === 'tomtom' ? 'TomTom' : 'demo (simulated)'}. Fuel prices: South African regulated retail prices.
               </p>
               <div className="share-row">
-                <button type="button" className="btn btn-ghost btn-small" onClick={() => void copyLink()}>
+                <button type="button" className="btn btn-secondary btn-small" onClick={() => void copyLink()}>
+                  <Icon name={shareStatus === 'copied' ? 'check' : 'link'} />
                   Copy link to this trip
                 </button>
                 <span className="muted hint--small" aria-live="polite">
@@ -321,9 +320,20 @@ export function App() {
             </>
           )}
         </div>
+        </div>
+
+        <ActionBar
+          pointCount={points.length}
+          hasConsumption={hasConsumption(choice)}
+          calculating={calculating}
+          stale={stale}
+          summary={result ? { duration: formatDuration(result.yourRoute.travelTimeSeconds), cost: formatRands(result.yourRoute.fuel.costRands) } : undefined}
+          onCalculate={() => void calculate()}
+        />
       </aside>
 
       <main className="map-area">
+        {points.length === 0 && <p className="map-hint">Click the map to set your start, or search for a place.</p>}
         <MapBoundary>
           <Suspense
             fallback={

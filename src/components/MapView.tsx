@@ -48,8 +48,9 @@ const LINE_HIT_PX = 7;
 /** Room for the legend at the bottom when fitting the view to a route. */
 const FIT_PADDING = { top: 56, right: 56, bottom: 84, left: 56 };
 
-const ROUTE_COLOUR = '#0b6bcb';
-const FASTEST_COLOUR = '#7b8794';
+/** The one accent of the interface (styles.css --accent): the user's route. */
+const ROUTE_COLOUR = '#0d7480';
+const FASTEST_COLOUR = '#5d6b72';
 /** Layers a click can land on to insert a via point. */
 const LINE_LAYERS = ['your-route-line', 'sketch-line'];
 

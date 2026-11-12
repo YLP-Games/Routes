@@ -76,8 +76,8 @@ export function VehiclePicker({ value, onChange, debounceMs = 300 }: VehiclePick
                   {value.vehicle.consumption.combined.toFixed(1)} L/100 km combined · {value.vehicle.fuelType === 'diesel' ? 'Diesel' : 'Petrol'}
                 </div>
               </div>
-              <button type="button" className="btn btn-ghost btn-small" onClick={() => update({ vehicle: null })}>
-                Change
+              <button type="button" className="btn btn-secondary btn-small" onClick={() => update({ vehicle: null })}>
+                Change car
               </button>
             </div>
           )}

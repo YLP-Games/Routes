@@ -9,65 +9,33 @@ const B = { lat: -25.7479, lng: 28.2293 };
 function setup(overrides: Partial<RouteBuilderProps> = {}) {
   const props: RouteBuilderProps = {
     points: [],
-    hasConsumption: false,
     onRemove: vi.fn(),
     onMove: vi.fn(),
     onClear: vi.fn(),
-    onCalculate: vi.fn(),
     ...overrides,
   };
   render(<RouteBuilder {...props} />);
   return props;
 }
 
-const calcButton = () => screen.getByRole('button', { name: /Calculate trip|Calculating/ });
-
 describe('RouteBuilder', () => {
-  it('shows the hint and disables Calculate with no points', () => {
-    setup({ hasConsumption: true });
+  it('explains how to add points and shows no list or Clear button before there are any', () => {
+    setup();
     expect(screen.getByText(/click the map to add points in order/)).toBeInTheDocument();
-    expect(calcButton()).toBeDisabled();
-  });
-
-  it('stays disabled with one point', () => {
-    setup({ points: [A], hasConsumption: true });
-    expect(calcButton()).toBeDisabled();
-  });
-
-  it('stays disabled without a vehicle or consumption', () => {
-    setup({ points: [A, B], hasConsumption: false });
-    expect(calcButton()).toBeDisabled();
-    expect(screen.getByText(/Choose your car/)).toBeInTheDocument();
-  });
-
-  it('enables Calculate with two points and consumption', async () => {
-    const props = setup({ points: [A, B], hasConsumption: true });
-    expect(calcButton()).toBeEnabled();
-    await userEvent.click(calcButton());
-    expect(props.onCalculate).toHaveBeenCalledTimes(1);
-  });
-
-  it('disables Calculate while calculating', () => {
-    setup({ points: [A, B], hasConsumption: true, calculating: true });
-    expect(calcButton()).toBeDisabled();
-    expect(calcButton()).toHaveTextContent('Calculating…');
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Clear route' })).not.toBeInTheDocument();
   });
 
   it('shows a place name instead of coordinates for a searched point', () => {
-    setup({ points: [{ ...A, label: 'Johannesburg' }, B], hasConsumption: true });
+    setup({ points: [{ ...A, label: 'Johannesburg' }, B] });
     expect(screen.getByText('Johannesburg')).toHaveAttribute('title', 'Johannesburg (-26.2041, 28.0473)');
     expect(screen.queryByText('-26.2041, 28.0473')).not.toBeInTheDocument();
     expect(screen.getByText('-25.7479, 28.2293')).toBeInTheDocument();
   });
 
-  it('offers "Update trip" when the result on screen is out of date', () => {
-    setup({ points: [A, B], hasConsumption: true, stale: true });
-    expect(screen.getByRole('button', { name: 'Update trip' })).toBeEnabled();
-  });
-
   it('labels points Start / Via / End and removes, moves and clears them', async () => {
     const user = userEvent.setup();
-    const props = setup({ points: [A, V, B], hasConsumption: true });
+    const props = setup({ points: [A, V, B] });
     expect(screen.getByText('Start')).toBeInTheDocument();
     expect(screen.getByText('Via 1')).toBeInTheDocument();
     expect(screen.getByText('End')).toBeInTheDocument();
@@ -81,7 +49,7 @@ describe('RouteBuilder', () => {
     expect(screen.getByRole('button', { name: 'Move Start up' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Move End down' })).toBeDisabled();
 
-    await user.click(screen.getByRole('button', { name: 'Clear' }));
+    await user.click(screen.getByRole('button', { name: 'Clear route' }));
     expect(props.onClear).toHaveBeenCalled();
   });
 });

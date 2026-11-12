@@ -280,7 +280,7 @@ describe('App', () => {
     expect(writeText).toHaveBeenCalledWith(window.location.href);
     expect(await screen.findByText('Link copied.')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Clear' }));
+    await user.click(screen.getByRole('button', { name: 'Clear route' }));
     await waitFor(() => expect(decodeURIComponent(window.location.hash)).toBe('#c=7.4'));
   });
 
