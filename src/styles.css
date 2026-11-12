@@ -808,18 +808,18 @@ fieldset:disabled .segment {
   display: inline-block;
   width: 22px;
   height: 0;
-  border-top: 4px solid #0d7480;
+  border-top: 4px solid var(--accent);
   border-radius: 2px;
 }
 .legend-item--stale .legend-swatch {
   opacity: 0.35;
 }
 .legend-swatch--fastest {
-  border-top: 4px dashed #5d6b72;
+  border-top: 4px dashed var(--muted);
   border-radius: 0;
 }
 .legend-swatch--sketch {
-  border-top: 3px dotted #0d7480;
+  border-top: 3px dotted var(--accent);
   border-radius: 0;
 }
 
@@ -903,6 +903,10 @@ fieldset:disabled .segment {
   }
   .segment {
     min-height: 44px;
+  }
+  .map-view .maplibregl-ctrl-group button {
+    width: 44px;
+    height: 44px;
   }
   .action-bar {
     position: sticky;
