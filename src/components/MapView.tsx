@@ -127,6 +127,8 @@ export function MapView({ points, geometry, fastestGeometry, stale = false, onAd
       style: STYLE,
       center: JOHANNESBURG,
       zoom: 10,
+      // Always written out: the collapsed form is a 24px toggle, too small to tap on a phone.
+      attributionControl: { compact: false },
     });
     mapRef.current = map;
     map.addControl(new NavigationControl({ showCompass: false }), 'top-right');

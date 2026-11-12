@@ -16,7 +16,8 @@
   --surface: #ecf0f2;
   --field: #ffffff;
   --ink: #1f3038;
-  --muted: #5d6b72;
+  --muted: #5d6b72; /* short labels: 4.5:1 or better on the ground and the surface */
+  --muted-text: #44525a; /* sentences of helper text: 7:1 on the ground */
   --accent: #0d7480;
   --accent-on-ink: #5cc3cf;
   --action: #0d7480;
@@ -61,6 +62,7 @@
     --field: #111c22;
     --ink: #f1f5f6;
     --muted: #a3afb5;
+    --muted-text: #c2ccd0;
     --accent: #5cc3cf;
     --accent-on-ink: #0d7480;
     --action: #5cc3cf;
@@ -171,7 +173,7 @@ p {
 }
 .tagline {
   margin-top: 10px;
-  color: var(--muted);
+  color: var(--muted-text);
   font-size: 0.9333rem;
 }
 .badge {
@@ -202,7 +204,7 @@ p {
   min-height: 36px;
 }
 .hint {
-  color: var(--muted);
+  color: var(--muted-text);
 }
 .hint--small {
   font-size: 0.8667rem;
@@ -211,7 +213,7 @@ p {
   color: var(--muted);
 }
 .note {
-  color: var(--muted);
+  color: var(--muted-text);
   font-size: 0.8667rem;
 }
 .notice {
@@ -502,23 +504,28 @@ p {
     background-color var(--m-out) var(--ease),
     color var(--m-out) var(--ease);
 }
+/* The radio itself fills the segment, drawn as nothing, so a click anywhere chooses it and the
+   focus ring lands on the control that has the focus. */
 .segment input {
   position: absolute;
-  opacity: 0;
-  pointer-events: none;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  background: none;
+  border: none;
+  border-radius: inherit;
+  cursor: inherit;
 }
 .segment.is-active {
   background: var(--ink);
   color: var(--ground);
 }
-.segment:has(input:focus-visible) {
-  outline: 2px solid var(--action);
-  outline-offset: 2px;
-}
 .segment-sub {
   font-size: 0.8rem;
   font-weight: 400;
-  opacity: 0.8;
 }
 fieldset:disabled .segment {
   cursor: not-allowed;
@@ -730,7 +737,7 @@ fieldset:disabled .segment {
 .action-status {
   flex: 1;
   min-width: 0;
-  color: var(--muted);
+  color: var(--muted-text);
   font-size: 0.8667rem;
   line-height: 1.35;
 }
