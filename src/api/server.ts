@@ -74,6 +74,30 @@ const app = createApp({
   trustProxy: trustProxy(),
   staticDir,
 });
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`[api] listening on http://localhost:${port} (provider: ${provider.name}${staticDir ? ', serving dist/' : ''})`);
 });
+
+/** Let in-flight requests finish on a deploy/restart, with a fallback for stuck keep-alives. */
+const SHUTDOWN_TIMEOUT_MS = 10_000;
+let shuttingDown = false;
+function shutdown(signal: 'SIGTERM' | 'SIGINT'): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[api] ${signal} received: closing server`);
+  const forceExit = setTimeout(() => {
+    console.warn('[api] shutdown timed out; forcing exit');
+    process.exit(process.exitCode ?? 0);
+  }, SHUTDOWN_TIMEOUT_MS);
+  server.close((err) => {
+    clearTimeout(forceExit);
+    if (err) {
+      console.error('[api] error closing server:', err.message);
+      process.exit(1);
+    }
+    console.log('[api] server closed');
+    process.exit(0);
+  });
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

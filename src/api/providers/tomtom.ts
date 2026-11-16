@@ -3,7 +3,17 @@ import { ProviderError } from '../errors';
 import type { ProviderRouteInput, ProviderRouteResult, RoutingProvider } from './types';
 
 const DEFAULT_BASE_URL = 'https://api.tomtom.com/routing/1/calculateRoute';
-const REQUEST_TIMEOUT_MS = 20_000;
+
+/** Fallback upstream timeout when TOMTOM_TIMEOUT_MS is unset or invalid. */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
+
+/** Positive integer from the environment, otherwise the 20 s fallback. Never log the API key. */
+export function requestTimeoutFromEnv(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.TOMTOM_TIMEOUT_MS;
+  if (raw === undefined || raw === '') return DEFAULT_REQUEST_TIMEOUT_MS;
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0 ? value : DEFAULT_REQUEST_TIMEOUT_MS;
+}
 
 /** Lower heating value of the fuel, MJ per litre (TomTom combustion model). */
 export const FUEL_ENERGY_DENSITY_MJ_PER_L = { petrol: 34.2, diesel: 35.8 } as const;
@@ -44,6 +54,8 @@ interface TomTomErrorBody {
 export interface TomTomProviderOptions {
   apiKey: string;
   baseUrl?: string;
+  /** Per-request upstream timeout in ms; defaults to TOMTOM_TIMEOUT_MS (or 20000). */
+  timeoutMs?: number;
 }
 
 const fmt = (n: number) => String(Number(n.toFixed(6)));
@@ -112,13 +124,15 @@ export function parseTomTomResponse(body: TomTomResponse): ProviderRouteResult {
 
 export function createTomTomProvider(opts: TomTomProviderOptions): RoutingProvider {
   if (!opts.apiKey) throw new Error('TomTom API key is required');
+  // An explicit option wins; otherwise read TOMTOM_TIMEOUT_MS. Never log the key or the full URL.
+  const timeoutMs = opts.timeoutMs ?? requestTimeoutFromEnv();
   return {
     name: 'tomtom',
     async calculate(input) {
       const url = buildTomTomUrl(input, opts);
       let res: Response;
       try {
-        res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+        res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
       } catch (err) {
         const reason = err instanceof Error && err.name === 'TimeoutError' ? 'timed out' : 'could not be reached';
         throw new ProviderError(`TomTom routing service ${reason}`);

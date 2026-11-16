@@ -372,3 +372,14 @@ describe('unknown routes', () => {
     expect(res.body.error.code).toBe('NOT_FOUND');
   });
 });
+
+describe('security headers', () => {
+  it('sets conservative headers on success and error responses', async () => {
+    for (const res of [await request(app).get('/api/health'), await request(app).get('/api/nope')]) {
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
+      expect(res.headers['x-frame-options']).toBe('SAMEORIGIN');
+      expect(res.headers['referrer-policy']).toBe('strict-origin-when-cross-origin');
+      expect(res.headers['x-powered-by']).toBeUndefined();
+    }
+  });
+});

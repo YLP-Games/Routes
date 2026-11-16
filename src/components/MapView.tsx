@@ -43,6 +43,8 @@ const DEFAULT_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 const TILE_URL: string = import.meta.env.VITE_TILE_URL || DEFAULT_TILE_URL;
 const JOHANNESBURG: [number, number] = [28.0473, -26.2041];
 const LONG_PRESS_MS = 600;
+/** Keyboard nudge for a focused marker, in degrees (~11 m). */
+const NUDGE_DEG = 0.0001;
 /** A click this close to the line (px) counts as a click on it. */
 const LINE_HIT_PX = 7;
 /** Room for the legend at the bottom when fitting the view to a route. */
@@ -215,7 +217,9 @@ export function MapView({ points, geometry, fastestGeometry, stale = false, onAd
       const kind = markerKind(index, points.length);
       el.className = `route-marker route-marker--${kind}`;
       el.textContent = markerLabel(index, points.length);
-      el.title = `${kind === 'start' ? 'Start' : kind === 'end' ? 'End' : `Via ${index}`} — drag to move, right-click or long-press to remove`;
+      el.title = `${kind === 'start' ? 'Start' : kind === 'end' ? 'End' : `Via ${index}`} — drag or use arrow keys to move, right-click, long-press or press Delete to remove`;
+      el.tabIndex = 0;
+      el.setAttribute('role', 'button');
       el.setAttribute('aria-label', el.title);
 
       const onContextMenu = (ev: MouseEvent) => {
@@ -247,6 +251,30 @@ export function MapView({ points, geometry, fastestGeometry, stale = false, onAd
       });
 
       const marker = new Marker({ element: el, draggable: true }).setLngLat([p.lng, p.lat]).addTo(map);
+      // Keyboard users get the same move/remove controls as mouse and touch users.
+      const onKeyDown = (ev: KeyboardEvent) => {
+        if (ev.key === 'Delete' || ev.key === 'Backspace') {
+          ev.preventDefault();
+          ev.stopPropagation();
+          callbacks.current.onRemovePoint(index);
+          return;
+        }
+        const deltas: Record<string, [number, number]> = {
+          ArrowUp: [NUDGE_DEG, 0],
+          ArrowDown: [-NUDGE_DEG, 0],
+          ArrowLeft: [0, -NUDGE_DEG],
+          ArrowRight: [0, NUDGE_DEG],
+        };
+        const d = deltas[ev.key];
+        if (!d) return;
+        ev.preventDefault();
+        const ll = marker.getLngLat();
+        const next = { lat: ll.lat + d[0], lng: ll.lng + d[1] };
+        marker.setLngLat([next.lng, next.lat]);
+        callbacks.current.onMovePoint(index, next);
+      };
+      el.addEventListener('keydown', onKeyDown);
+      cleanups.push(() => el.removeEventListener('keydown', onKeyDown));
       marker.on('dragstart', clearPress);
       marker.on('dragend', () => {
         const ll = marker.getLngLat();
@@ -303,9 +331,20 @@ export function MapView({ points, geometry, fastestGeometry, stale = false, onAd
     map.fitBounds(bounds, { padding: FIT_PADDING, duration: 600, maxZoom: 16 });
   }, [geometry, fastestGeometry]);
 
+  /** Keyboard path for adding points: the canvas itself is not reachable by keyboard. */
+  function addPointAtCentre() {
+    const map = mapRef.current;
+    if (!map) return;
+    const centre = map.getCenter();
+    callbacks.current.onAddPoint({ lat: centre.lat, lng: centre.lng });
+  }
+
   return (
     <div className="map-view">
       <div ref={containerRef} className="map-canvas" role="region" aria-label="Route map. Click to add points." />
+      <button type="button" className="map-add-centre" onClick={addPointAtCentre} aria-label="Add a route point at the current map centre">
+        + Add point at map centre
+      </button>
       {(hasRoute || showSketch) && (
         <div className="map-legend" aria-hidden="true">
           {hasRoute && (

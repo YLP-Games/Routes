@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProviderError } from '../errors';
 import { buildConsumptionCurve } from '../services/fuelModel';
-import { createTomTomProvider } from './tomtom';
+import { createTomTomProvider, DEFAULT_REQUEST_TIMEOUT_MS, requestTimeoutFromEnv } from './tomtom';
 
 const KEY = 'test-key-123';
 const points = [
@@ -196,5 +196,27 @@ describe('TomTom provider', () => {
   it('treats an empty routes array as a provider error', async () => {
     stubFetch(200, { routes: [] });
     await expect(createTomTomProvider({ apiKey: KEY }).calculate({ points, fuelType: 'petrol' })).rejects.toThrow(/no route/);
+  });
+});
+
+describe('request timeout configuration', () => {
+  it('falls back to 20s for unset or invalid values', () => {
+    expect(requestTimeoutFromEnv({})).toBe(DEFAULT_REQUEST_TIMEOUT_MS);
+    expect(requestTimeoutFromEnv({ TOMTOM_TIMEOUT_MS: '' })).toBe(DEFAULT_REQUEST_TIMEOUT_MS);
+    for (const bad of ['0', '-1', '1.5', 'abc', 'Infinity']) {
+      expect(requestTimeoutFromEnv({ TOMTOM_TIMEOUT_MS: bad })).toBe(DEFAULT_REQUEST_TIMEOUT_MS);
+    }
+  });
+
+  it('accepts a positive integer', () => {
+    expect(requestTimeoutFromEnv({ TOMTOM_TIMEOUT_MS: '4500' })).toBe(4500);
+  });
+
+  it('passes the chosen timeout to AbortSignal.timeout', async () => {
+    const spy = vi.spyOn(AbortSignal, 'timeout');
+    stubFetch(200, sample);
+    await createTomTomProvider({ apiKey: KEY, timeoutMs: 1234 }).calculate({ points, fuelType: 'petrol' });
+    expect(spy).toHaveBeenCalledWith(1234);
+    spy.mockRestore();
   });
 });

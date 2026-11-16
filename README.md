@@ -43,6 +43,7 @@ still works end to end for development.
 | `npm test`           | Run all tests once (Vitest projects `api` and `web`) |
 | `npm run test:watch` | Vitest in watch mode                                 |
 | `npm run typecheck`  | TypeScript type check                                |
+| `npm run check`      | Typecheck, test and build in one command             |
 
 ### Ports
 
@@ -73,6 +74,10 @@ Settings, all optional (see `.env.example`):
 | `ROUTE_CACHE_SECONDS`   | 90      | How long an identical route calculation is reused.                   |
 | `CORS_ORIGINS`          | unset   | Other sites allowed to call the API. Unset: same-origin only.        |
 | `TRUST_PROXY`           | unset   | Set behind a reverse proxy so the rate limit sees real client IPs.   |
+| `TOMTOM_TIMEOUT_MS`     | 20000   | Per-request routing timeout in ms (positive integers only).          |
+
+Responses carry conservative security headers (`nosniff`, `X-Frame-Options`, `Referrer-Policy`),
+and the server drains in-flight requests on `SIGTERM`/`SIGINT` with a 10 s force-exit fallback.
 
 Every route calculation spends TomTom quota (two calls when comparing with the fastest route), so
 keep the rate limit on for anything public. Never commit `.env`: a key that reaches git history

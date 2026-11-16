@@ -42,6 +42,15 @@ function parse<T extends z.ZodType>(schema: T, value: unknown): z.infer<T> {
   return r.data;
 }
 
+/** Minimal hardening headers on every response: API, static assets, errors and the SPA shell. */
+const securityHeaders: RequestHandler = (_req, res, next) => {
+  res.removeHeader('X-Powered-By');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+};
+
 const unlimited: RequestHandler = (_req, _res, next) => next();
 
 export function createApp(opts: AppOptions = {}) {
@@ -56,6 +65,7 @@ export function createApp(opts: AppOptions = {}) {
 
   const app = express();
   app.disable('x-powered-by');
+  app.use(securityHeaders);
   if (opts.trustProxy !== undefined) app.set('trust proxy', opts.trustProxy);
   // Route geometry is long, repetitive JSON, and the frontend bundle is text: both shrink severalfold.
   app.use(compression());
