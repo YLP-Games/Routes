@@ -56,7 +56,9 @@ chunk and is off the initial critical path.
 
 ## Remaining follow-ups
 
-- Address the PR #1 findings before merging it.
+- PR #1 findings have been addressed in [PR #3](https://github.com/YLP-Games/Routes/pull/3)
+  (`fix/via-point-detours`): hardened retry selection, complete fallback, bounded geometry analysis
+  and radius cap. Decide whether to merge #3 or fold it back into #1.
 - Shared (Redis-backed) rate limiting/caching for multi-instance deployments; current guards are
   in-process.
 - Coverage thresholds via `@vitest/coverage-v8`.
