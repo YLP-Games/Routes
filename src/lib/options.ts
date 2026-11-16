@@ -1,5 +1,11 @@
 /** Fuel / zone option lists and the vehicle-choice model shared by VehiclePicker and App. */
-import type { FuelType, PriceZone, Vehicle } from '../shared/types';
+import type { FuelType, LatLng, PriceZone, Vehicle } from '../shared/types';
+
+/** A route point in the planner: a coordinate, named when it came from place search. */
+export type RoutePoint = LatLng & { label?: string };
+
+/** Which month's fuel prices the planner asks for. */
+export type PriceMonthChoice = 'current' | 'previous';
 
 export const FUEL_OPTIONS: { value: FuelType; label: string }[] = [
   { value: 'petrol93', label: 'Petrol 93' },

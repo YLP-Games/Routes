@@ -31,6 +31,15 @@ Each row is a `FuelPrice` (see `src/shared/types.ts`):
 3. Run `npx vitest run --project api`. The data-integrity tests check the format and look for
    duplicate rows.
 
+**November 2026 is complete:** all 8 zone×grade rows (2 zones × 4 grades) are on file. The inland
+`diesel50ppm` (0.005% sulphur) wholesale price is **R32.09/L**, effective 2026-11-04 — reconciled
+from the October inland price of R33.29 less the announced 119.82c/L drop and verified against the
+gov.za DMPR media statement for prices effective 4 November 2026, with The Citizen's report as a
+supporting source. Diesel figures are regulated **wholesale** prices, not retail.
+
+If the table falls behind (the first Wednesday of a month passes and that month has no rows),
+trips priced at `current` carry a "Fuel prices may be out of date" warning.
+
 `current` means the newest month whose `effectiveDate` has passed in South African time, so
 there's no need to change any code when a new month starts. `previous` is the month listed just
 before `current`.

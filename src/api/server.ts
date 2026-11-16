@@ -1,19 +1,61 @@
+import { existsSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import dotenv from 'dotenv';
 import { createApp } from './app';
+import { createOfflinePlaceSearch } from './places/offline';
+import { createTomTomPlaceSearch } from './places/tomtom';
+import type { PlaceSearchProvider } from './places/types';
+import { withRouteCache } from './providers/cache';
 import { createMockProvider } from './providers/mock';
+import {
+  createProviderStatus,
+  withPlaceSearchFallback,
+  withRoutingFallback,
+} from './providers/resilience';
 import { createTomTomProvider } from './providers/tomtom';
 import type { RoutingProvider } from './providers/types';
 
 dotenv.config({ quiet: true });
 
 const apiKey = process.env.TOMTOM_API_KEY?.trim();
+// Offline/mock instances always exist so a configured-but-failing TomTom can degrade gracefully.
+const mockProvider = createMockProvider();
+const offlinePlaces = createOfflinePlaceSearch();
+const providerStatus = createProviderStatus();
 let provider: RoutingProvider;
+let places: PlaceSearchProvider;
 if (apiKey) {
-  provider = createTomTomProvider({ apiKey });
+  // Both live capabilities share one status object, so a failure in either marks /api/health degraded.
+  provider = withRoutingFallback(createTomTomProvider({ apiKey }), mockProvider, providerStatus);
+  places = withPlaceSearchFallback(createTomTomPlaceSearch({ apiKey }), offlinePlaces, providerStatus);
 } else {
   console.warn('[api] TOMTOM_API_KEY is not set: using the mock routing provider (demo estimates, no live traffic).');
-  provider = createMockProvider();
+  provider = mockProvider;
+  places = offlinePlaces;
 }
+
+/** A whole number >= 0 from the environment, or the fallback when unset or malformed. */
+function envCount(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  const n = Number(raw);
+  return raw && Number.isInteger(n) && n >= 0 ? n : fallback;
+}
+
+// Identical route calculations are reused briefly, so re-pricing a trip or pressing Calculate twice
+// does not spend routing quota. ROUTE_CACHE_SECONDS=0 turns this off.
+const cacheSeconds = envCount('ROUTE_CACHE_SECONDS', 90);
+if (cacheSeconds > 0) provider = withRouteCache(provider, { ttlMs: cacheSeconds * 1000 });
+
+function trustProxy(): boolean | number | string | undefined {
+  const raw = process.env.TRUST_PROXY?.trim();
+  if (!raw) return undefined;
+  if (raw === 'true' || raw === 'false') return raw === 'true';
+  return /^\d+$/.test(raw) ? Number(raw) : raw;
+}
+
+// Serve the built frontend too when it exists, so `npm run build && npm start` is a complete deployment.
+const dist = resolve(process.cwd(), 'dist');
+const staticDir = existsSync(join(dist, 'index.html')) ? dist : undefined;
 
 const DEFAULT_API_PORT = 8787;
 
@@ -34,6 +76,41 @@ function cliPort(argv: string[]): number | undefined {
 // API_PORT wins, then --port. PORT is only a fallback for hosts that assign it (production):
 // in dev, tools set PORT for the Vite server, so the dev scripts pass --port explicitly.
 const port = asPort(process.env.API_PORT) ?? cliPort(process.argv.slice(2)) ?? asPort(process.env.PORT) ?? DEFAULT_API_PORT;
-createApp({ provider }).listen(port, () => {
-  console.log(`[api] listening on http://localhost:${port} (provider: ${provider.name})`);
+const app = createApp({
+  provider,
+  places,
+  // Only expose provider health when a live provider is configured; without a key, health stays
+  // the simple liveness response it has always been.
+  ...(apiKey ? { providerStatus: () => providerStatus.snapshot() } : {}),
+  rateLimitPerMinute: envCount('RATE_LIMIT_PER_MINUTE', 30),
+  corsOrigins: process.env.CORS_ORIGINS?.split(',').map((o) => o.trim()).filter(Boolean),
+  trustProxy: trustProxy(),
+  staticDir,
 });
+const server = app.listen(port, () => {
+  console.log(`[api] listening on http://localhost:${port} (provider: ${provider.name}${staticDir ? ', serving dist/' : ''})`);
+});
+
+/** Let in-flight requests finish on a deploy/restart, with a fallback for stuck keep-alives. */
+const SHUTDOWN_TIMEOUT_MS = 10_000;
+let shuttingDown = false;
+function shutdown(signal: 'SIGTERM' | 'SIGINT'): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[api] ${signal} received: closing server`);
+  const forceExit = setTimeout(() => {
+    console.warn('[api] shutdown timed out; forcing exit');
+    process.exit(process.exitCode ?? 0);
+  }, SHUTDOWN_TIMEOUT_MS);
+  server.close((err) => {
+    clearTimeout(forceExit);
+    if (err) {
+      console.error('[api] error closing server:', err.message);
+      process.exit(1);
+    }
+    console.log('[api] server closed');
+    process.exit(0);
+  });
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

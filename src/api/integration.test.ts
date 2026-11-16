@@ -20,6 +20,8 @@ import { buildRouteRequest } from '../lib/routeRequest';
 import type { RouteRequest, RouteResponse, RouteWithFuel } from '../shared/types';
 import { createApp } from './app';
 import { createMockProvider } from './providers/mock';
+import { LIVE_ROUTING_UNAVAILABLE_WARNING, createProviderStatus } from './providers/resilience';
+import type { RoutingProvider } from './providers/types';
 
 const NOW = new Date('2026-10-19T08:00:00.000Z');
 const now = () => NOW;
@@ -29,14 +31,24 @@ const midrand = { lat: -25.9992, lng: 28.1263 };
 const pta = { lat: -25.7479, lng: 28.2293 };
 
 let server: Server;
+let mainBase: string;
 const realFetch = globalThis.fetch;
+const status = createProviderStatus({ now: () => new Date('2026-10-19T08:00:00.000Z') });
+status.recordError('routing', 'TomTom routing failed (429): quota exceeded');
+
+/** The client uses relative '/api/...' URLs (the Vite proxy's job in the browser); prefix a test server. */
+const stubFetchTo = (base: string) =>
+  vi.stubGlobal('fetch', (url: string, init?: RequestInit) => realFetch(base + url, init));
 
 beforeAll(async () => {
-  server = createApp({ provider: createMockProvider({ now }), now }).listen(0);
+  server = createApp({
+    provider: createMockProvider({ now }),
+    now,
+    providerStatus: () => status.snapshot(),
+  }).listen(0);
   await new Promise<void>((resolve) => server.once('listening', resolve));
-  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  // The client uses relative '/api/...' URLs (the Vite proxy's job in the browser); prefix the test server.
-  vi.stubGlobal('fetch', (url: string, init?: RequestInit) => realFetch(base + url, init));
+  mainBase = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  stubFetchTo(mainBase);
 });
 
 afterAll(async () => {
@@ -73,8 +85,19 @@ function expectRenderableRoute(r: RouteWithFuel, expectedPoints: number) {
 }
 
 describe('frontend client <-> API', () => {
-  it('health reports the mock provider', async () => {
-    expect(await getHealth()).toEqual({ ok: true, provider: 'mock' });
+  it('health reports the mock provider and injected provider status', async () => {
+    expect(await getHealth()).toEqual({
+      ok: true,
+      provider: 'mock',
+      degraded: true,
+      components: {
+        routing: {
+          ok: false,
+          lastError: 'TomTom routing failed (429): quota exceeded',
+          lastErrorAt: '2026-10-19T08:00:00.000Z',
+        },
+      },
+    });
   });
 
   it('calculates a catalogue-vehicle trip exactly as App sends it', async () => {
@@ -114,6 +137,29 @@ describe('frontend client <-> API', () => {
     expect(res.yourRoute.fuel.priceMonth).toBe(previous.month);
     expect(res.yourRoute.fuel.priceRandsPerLitre).toBe(previous.randsPerLitre);
     expect(await getFuelPriceMonths()).toContain(previous.month);
+  });
+
+  it('surfaces provider warnings through the real API client, without leaking them into a route', async () => {
+    const mock = createMockProvider({ now });
+    const provider: RoutingProvider = {
+      name: 'tomtom',
+      calculate: async (input) => ({ ...(await mock.calculate(input)), warnings: [LIVE_ROUTING_UNAVAILABLE_WARNING] }),
+    };
+    const local = createApp({ provider, now }).listen(0);
+    await new Promise<void>((resolve) => local.once('listening', resolve));
+    const localBase = `http://127.0.0.1:${(local.address() as AddressInfo).port}`;
+    stubFetchTo(localBase);
+    try {
+      const choice: VehicleChoice = { ...DEFAULT_VEHICLE_CHOICE, useCustom: true, customConsumption: '8' };
+      const body = buildRouteRequest({ points: [jhb, pta], departAt: undefined, choice, priceMonth: 'current', compareFastest: false });
+      const res = await calculateRoute(body);
+      expect(res.warnings).toContain(LIVE_ROUTING_UNAVAILABLE_WARNING);
+      expect(res.yourRoute).not.toHaveProperty('warnings');
+      expect(res.fastestRoute).toBeUndefined();
+    } finally {
+      stubFetchTo(mainBase);
+      await new Promise<void>((resolve) => local.close(() => resolve()));
+    }
   });
 
   it('surfaces the server error message through ApiRequestError', async () => {

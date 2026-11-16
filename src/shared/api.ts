@@ -4,15 +4,19 @@
  *
  * | Method | Path                                      | Request                         | Response                                  |
  * |--------|-------------------------------------------|---------------------------------|-------------------------------------------|
- * | GET    | /api/health                               | -                               | { ok: true, provider: 'tomtom' \| 'mock' } |
+ * | GET    | /api/health                               | -                               | { ok: true, provider: 'tomtom' \| 'mock', degraded?, components? } |
  * | POST   | /api/route                                | body: RouteRequest              | RouteResponse (400 ApiError if invalid)   |
  * | GET    | /api/vehicles?q=                          | q: free-text search (optional)  | Vehicle[]                                 |
  * | GET    | /api/vehicles/:id                         | -                               | Vehicle (404 ApiError if unknown)         |
  * | GET    | /api/fuel-prices?month=&zone=&fuel=       | month: 'current' \| 'previous' \| 'YYYY-MM'; zone: PriceZone; fuel: FuelType (all optional) | FuelPrice[] |
  * | GET    | /api/fuel-prices/months                   | -                               | string[] ('YYYY-MM', newest first)        |
+ * | GET    | /api/places?q=                            | q: place name, 2-100 characters | Place[] (best match first, at most 6)     |
+ *
+ * POST /api/route and GET /api/places answer 429 ApiError (code RATE_LIMITED, with Retry-After) when a
+ * client exceeds the server's per-minute limit.
  */
 
-import type { ApiError, FuelPrice, RouteRequest, RouteResponse, Vehicle } from './types';
+import type { ApiError, FuelPrice, Place, RouteRequest, RouteResponse, Vehicle } from './types';
 
 export const API_BASE = '/api';
 
@@ -23,10 +27,26 @@ export const API_PATHS = {
   vehicle: (id: string) => `${API_BASE}/vehicles/${encodeURIComponent(id)}`,
   fuelPrices: `${API_BASE}/fuel-prices`,
   fuelPriceMonths: `${API_BASE}/fuel-prices/months`,
+  places: `${API_BASE}/places`,
 } as const;
 
-/** Response of GET /api/health. */
-export interface HealthResponse { ok: true; provider: 'tomtom' | 'mock' }
+/** Last-known status of one provider component, reported through /api/health. */
+export interface ProviderComponentStatus {
+  ok: boolean;
+  lastError?: string;
+  lastErrorAt?: string; // ISO
+}
+
+/**
+ * Response of GET /api/health. `degraded` and `components` are present only when the server tracks
+ * live-provider health (i.e. a TomTom key is configured); otherwise liveness is reported as before.
+ */
+export interface HealthResponse {
+  ok: true;
+  provider: 'tomtom' | 'mock';
+  degraded?: boolean;
+  components?: Record<string, ProviderComponentStatus>;
+}
 
 /** Type map of endpoint responses, for typed fetch helpers. */
 export interface ApiResponses {
@@ -36,6 +56,7 @@ export interface ApiResponses {
   vehicle: Vehicle;
   fuelPrices: FuelPrice[];
   fuelPriceMonths: string[];
+  places: Place[];
 }
 
 export type { ApiError, RouteRequest };

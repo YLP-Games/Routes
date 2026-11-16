@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { LatLng } from '../../shared/types';
-import { CIRCLE_MARGIN_M, distanceM, excursionMeters, viaCircleRadii } from './viaExcursions';
+import {
+  CIRCLE_MARGIN_M,
+  decimateLeg,
+  distanceM,
+  excursionMeters,
+  MAX_CIRCLE_RADIUS_M,
+  viaCircleRadii,
+} from './viaExcursions';
 
 /** `n` evenly spaced steps from a to b, excluding a. */
 function to(a: LatLng, b: LatLng, n: number): LatLng[] {
@@ -106,5 +113,28 @@ describe('via excursions', () => {
     ];
     const points = [origin, click, { lat: -26.2001, lng: 28.0065 }, deadEnd2, dest];
     expect([...viaCircleRadii(points, legs).keys()]).toEqual([1, 3]);
+  });
+
+  it('decimates dense polylines while keeping the endpoints', () => {
+    const dense = Array.from({ length: 5_000 }, (_, k) => ({
+      lat: -26.2,
+      lng: 28 + k * 0.00001, // ~1 m spacing
+    }));
+    const reduced = decimateLeg(dense);
+    expect(reduced.length).toBeLessThan(dense.length / 10);
+    expect(reduced[0]).toEqual(dense[0]);
+    expect(reduced[reduced.length - 1]).toEqual(dense[dense.length - 1]);
+  });
+
+  it('caps the circle radius so a large excursion cannot permit a different corridor', () => {
+    // ~2.4 km down the side road: the ~4.9 km out-and-back is still under MAX_EXCURSION_M,
+    // but its start is far enough from the click that the computed radius exceeds the cap.
+    const farJunction = { lat: -26.222, lng: 28.005 };
+    const legs = [
+      [origin, ...to(origin, junction, 10), ...to(junction, farJunction, 60)],
+      [farJunction, ...to(farJunction, junction, 60), ...to(junction, dest, 10)],
+    ];
+    const radii = viaCircleRadii([origin, farJunction, dest], legs);
+    expect(radii.get(1)).toBe(MAX_CIRCLE_RADIUS_M);
   });
 });

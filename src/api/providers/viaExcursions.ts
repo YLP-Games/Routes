@@ -23,6 +23,44 @@ export const MAX_EXCURSION_M = 5000;
 const SEARCH_M = 2 * MAX_EXCURSION_M;
 /** Slack added to a via circle so the route the excursion left from is safely inside it. */
 export const CIRCLE_MARGIN_M = 50;
+/** Never give TomTom a wider circle than this: a huge radius can change the whole corridor. */
+export const MAX_CIRCLE_RADIUS_M = 1000;
+/** Analyse geometry at ~10 m spacing; TomTom can return one vertex per road shape point. */
+const DECIMATE_M = 10;
+/** Hard ceiling on pairwise checks per analysis, so a crafted polyline cannot block the event loop. */
+const REJOIN_BUDGET = 5_000_000;
+
+/** Bounded work counter shared by the scans inside one analysis. */
+class Budget {
+  private left = REJOIN_BUDGET;
+  get exhausted(): boolean {
+    return this.left <= 0;
+  }
+  spend(): boolean {
+    if (this.left <= 0) return false;
+    this.left -= 1;
+    return true;
+  }
+}
+
+/**
+ * Keep the endpoints of a leg (the via/route anchors) but drop intermediate vertices closer than
+ * 10 m. Detection only cares about excursions of at least MIN_EXCURSION_M, so this loses no signal
+ * while bounding the quadratic scans even for very dense polylines.
+ */
+export function decimateLeg(leg: LatLng[], stepM = DECIMATE_M): LatLng[] {
+  if (leg.length <= 2) return leg;
+  const out: LatLng[] = [leg[0]];
+  let anchor = leg[0];
+  for (let i = 1; i < leg.length; i++) {
+    const p = leg[i];
+    if (i === leg.length - 1 || distanceM(anchor, p) >= stepM) {
+      out.push(p);
+      anchor = p;
+    }
+  }
+  return out;
+}
 
 export interface Excursion {
   /** Index (in the concatenated geometry) where the route leaves its path. */
@@ -57,7 +95,8 @@ function heading(pts: LatLng[], i: number, step: 1 | -1): number | undefined {
 }
 
 /** True when the route at `to` is back where it was at `from`, ready to carry on as if it never left. */
-function rejoins(pts: LatLng[], from: number, to: number): boolean {
+function rejoins(pts: LatLng[], from: number, to: number, budget: Budget): boolean {
+  if (!budget.spend()) return false;
   const gap = distanceM(pts[from], pts[to]);
   if (gap <= SAME_NODE_M) return true;
   if (gap > CARRIAGEWAY_GAP_M) return false;
@@ -77,13 +116,13 @@ function cumulative(pts: LatLng[]): number[] {
 }
 
 /** The excursion that starts at or before index `at` and ends at or after it, if it is short enough. */
-function excursionAround(pts: LatLng[], cum: number[], at: number): Excursion | undefined {
+function excursionAround(pts: LatLng[], cum: number[], at: number, budget: Budget): Excursion | undefined {
   let best: Excursion | undefined;
-  for (let i = at; i >= 0 && cum[at] - cum[i] <= SEARCH_M; i--) {
-    for (let j = at; j < pts.length && cum[j] - cum[i] <= SEARCH_M; j++) {
+  for (let i = at; i >= 0 && cum[at] - cum[i] <= SEARCH_M && !budget.exhausted; i--) {
+    for (let j = at; j < pts.length && cum[j] - cum[i] <= SEARCH_M && !budget.exhausted; j++) {
       const length = cum[j] - cum[i];
       if (length < MIN_EXCURSION_M || (best && length <= best.lengthMeters)) continue;
-      if (rejoins(pts, i, j)) best = { from: i, to: j, lengthMeters: length };
+      if (rejoins(pts, i, j, budget)) best = { from: i, to: j, lengthMeters: length };
     }
   }
   return best && best.lengthMeters <= MAX_EXCURSION_M ? best : undefined;
@@ -95,15 +134,20 @@ function excursionAround(pts: LatLng[], cum: number[], at: number): Excursion | 
  * through. Keyed by index into `points`; vias the route reaches cleanly are absent.
  */
 export function viaCircleRadii(points: LatLng[], legs: LatLng[][]): Map<number, number> {
-  const pts = legs.flat();
+  const reduced = legs.map((leg) => decimateLeg(leg));
+  const pts = reduced.flat();
   const cum = cumulative(pts);
   const radii = new Map<number, number>();
+  const budget = new Budget();
   let end = 0;
-  for (let k = 0; k < legs.length - 1 && k + 1 < points.length - 1; k++) {
-    end += legs[k].length;
+  for (let k = 0; k < reduced.length - 1 && k + 1 < points.length - 1 && !budget.exhausted; k++) {
+    end += reduced[k].length;
     if (end === 0) continue;
-    const excursion = excursionAround(pts, cum, end - 1);
-    if (excursion) radii.set(k + 1, Math.ceil(distanceM(points[k + 1], pts[excursion.from]) + CIRCLE_MARGIN_M));
+    const excursion = excursionAround(pts, cum, end - 1, budget);
+    if (excursion) {
+      const radius = Math.ceil(distanceM(points[k + 1], pts[excursion.from]) + CIRCLE_MARGIN_M);
+      radii.set(k + 1, Math.min(radius, MAX_CIRCLE_RADIUS_M));
+    }
   }
   return radii;
 }
@@ -113,15 +157,17 @@ export function viaCircleRadii(points: LatLng[], legs: LatLng[][]): Map<number, 
  * excursion nested inside a longer one is not counted, and deliberate (too long) ones count as zero.
  */
 export function excursionMeters(pts: LatLng[]): number {
-  const cum = cumulative(pts);
+  const reduced = decimateLeg(pts);
+  const cum = cumulative(reduced);
   const candidates: Excursion[] = [];
+  const budget = new Budget();
   let last = 0; // furthest vertex within SEARCH_M of vertex i
-  for (let i = 0; i < pts.length; i++) {
-    while (last + 1 < pts.length && cum[last + 1] - cum[i] <= SEARCH_M) last++;
-    for (let j = last; j > i; j--) {
+  for (let i = 0; i < reduced.length && !budget.exhausted; i++) {
+    while (last + 1 < reduced.length && cum[last + 1] - cum[i] <= SEARCH_M) last++;
+    for (let j = last; j > i && !budget.exhausted; j--) {
       const length = cum[j] - cum[i];
       if (length < MIN_EXCURSION_M) break;
-      if (rejoins(pts, i, j)) {
+      if (rejoins(reduced, i, j, budget)) {
         candidates.push({ from: i, to: j, lengthMeters: length });
         break;
       }

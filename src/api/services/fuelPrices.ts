@@ -9,6 +9,25 @@ export function saDate(now: Date): string {
   return new Date(now.getTime() + 2 * 3600_000).toISOString().slice(0, 10);
 }
 
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+const monthName = (month: string) => `${MONTH_NAMES[Number(month.slice(5)) - 1]} ${month.slice(0, 4)}`;
+
+/** The month after a 'YYYY-MM' month. */
+export function nextMonth(month: string): string {
+  const y = Number(month.slice(0, 4));
+  const m = Number(month.slice(5));
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+}
+
+/** First Wednesday of a 'YYYY-MM' month as 'YYYY-MM-DD': the day regulated prices change. */
+export function firstWednesday(month: string): string {
+  const weekday = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5)) - 1, 1)).getUTCDay(); // 0 = Sunday
+  return `${month}-${String(1 + ((3 - weekday + 7) % 7)).padStart(2, '0')}`;
+}
+
 export interface PriceLookup { price: FuelPrice; warning?: string }
 
 export function createFuelPriceService(data: FuelPrice[]) {
@@ -30,6 +49,21 @@ export function createFuelPriceService(data: FuelPrice[]) {
     const m = monthsDesc.find((month) => (effective.get(month) as string) <= today);
     if (!m) throw new HttpError(404, 'PRICE_MONTH_NOT_FOUND', `No fuel prices are effective on ${today}`);
     return m;
+  }
+
+  /**
+   * Warning for when the table has fallen behind: the month after the current one has no prices
+   * on file although its adjustment date (first Wednesday) has passed. Undefined when up to date.
+   */
+  function staleWarning(now: Date): string | undefined {
+    const today = saDate(now);
+    const cur = monthsDesc.find((month) => (effective.get(month) as string) <= today);
+    if (!cur) return undefined;
+    const next = nextMonth(cur);
+    if (effective.has(next)) return undefined; // on file, just not in effect yet
+    const due = firstWednesday(next);
+    if (today < due) return undefined;
+    return `Fuel prices may be out of date: the newest on file are for ${monthName(cur)}, but prices were due to change on ${due}`;
   }
 
   /** Resolve 'current' | 'previous' | 'YYYY-MM' to a month present in the table. */
@@ -73,7 +107,7 @@ export function createFuelPriceService(data: FuelPrice[]) {
       .sort((a, b) => b.month.localeCompare(a.month) || a.zone.localeCompare(b.zone) || a.fuel.localeCompare(b.fuel));
   }
 
-  return { listMonths, resolveMonth, getPrice, listPrices };
+  return { listMonths, resolveMonth, getPrice, listPrices, staleWarning };
 }
 
 export type FuelPriceService = ReturnType<typeof createFuelPriceService>;

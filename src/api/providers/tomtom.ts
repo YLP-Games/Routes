@@ -4,7 +4,17 @@ import type { ProviderRouteInput, ProviderRouteResult, RoutingProvider } from '.
 import { excursionMeters, viaCircleRadii } from './viaExcursions';
 
 const DEFAULT_BASE_URL = 'https://api.tomtom.com/routing/1/calculateRoute';
-const REQUEST_TIMEOUT_MS = 20_000;
+
+/** Fallback upstream timeout when TOMTOM_TIMEOUT_MS is unset or invalid. */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
+
+/** Positive integer from the environment, otherwise the 20 s fallback. Never log the API key. */
+export function requestTimeoutFromEnv(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.TOMTOM_TIMEOUT_MS;
+  if (raw === undefined || raw === '') return DEFAULT_REQUEST_TIMEOUT_MS;
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0 ? value : DEFAULT_REQUEST_TIMEOUT_MS;
+}
 
 /** Lower heating value of the fuel, MJ per litre (TomTom combustion model). */
 export const FUEL_ENERGY_DENSITY_MJ_PER_L = { petrol: 34.2, diesel: 35.8 } as const;
@@ -46,6 +56,8 @@ interface TomTomErrorBody {
 export interface TomTomProviderOptions {
   apiKey: string;
   baseUrl?: string;
+  /** Per-request upstream timeout in ms; defaults to TOMTOM_TIMEOUT_MS (or 20000). */
+  timeoutMs?: number;
 }
 
 const fmt = (n: number) => String(Number(n.toFixed(6)));
@@ -111,12 +123,17 @@ const legGeometry = (route: TomTomRoute): LatLng[][] =>
 export function parseTomTomResponse(body: TomTomResponse): ProviderRouteResult {
   const route = firstRoute(body);
   const s = route.summary;
-  const delay = s.trafficDelayInSeconds ?? 0;
+  // "Traffic delay" is the with-traffic time minus the free-flow time, so the three figures the UI
+  // shows always add up (the mock provider and the fallback fuel model assume the same). TomTom's
+  // own trafficDelayInSeconds is a separate figure that need not equal that difference, so it is
+  // only used when TomTom omits the free-flow time.
+  const noTraffic = s.noTrafficTravelTimeInSeconds;
+  const delay = Math.max(0, noTraffic !== undefined ? s.travelTimeInSeconds - noTraffic : s.trafficDelayInSeconds ?? 0);
   const geometry = legGeometry(route).flat();
   const result: ProviderRouteResult = {
     distanceMeters: s.lengthInMeters,
     travelTimeSeconds: s.travelTimeInSeconds,
-    noTrafficTravelTimeSeconds: s.noTrafficTravelTimeInSeconds ?? Math.max(0, s.travelTimeInSeconds - delay),
+    noTrafficTravelTimeSeconds: noTraffic ?? Math.max(0, s.travelTimeInSeconds - delay),
     trafficDelaySeconds: delay,
     departureTime: new Date(s.departureTime).toISOString(),
     arrivalTime: new Date(s.arrivalTime).toISOString(),
@@ -127,10 +144,10 @@ export function parseTomTomResponse(body: TomTomResponse): ProviderRouteResult {
 }
 
 /** GETs a calculateRoute URL, mapping failures to ProviderError. */
-async function requestRoute(url: string): Promise<TomTomResponse> {
+async function requestRoute(url: string, timeoutMs: number): Promise<TomTomResponse> {
   let res: Response;
   try {
-    res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+    res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
   } catch (err) {
     const reason = err instanceof Error && err.name === 'TimeoutError' ? 'timed out' : 'could not be reached';
     throw new ProviderError(`TomTom routing service ${reason}`);
@@ -147,32 +164,45 @@ async function requestRoute(url: string): Promise<TomTomResponse> {
   return body as TomTomResponse;
 }
 
+/** A retry must be genuinely better, not merely free of detectable short excursions. */
+function isBetterRetry(original: ProviderRouteResult, retry: ProviderRouteResult): boolean {
+  // A summary with no usable polyline must never win just because excursionMeters([]) is 0.
+  // A shorter route naturally has fewer vertices, so do not compare raw vertex counts.
+  if (retry.geometry.length < 2) return false;
+  // Excursion length is a proxy for local doubling-back, not for overall quality. Require the
+  // retry to be no slower and not much longer as well, so a removed spur cannot hide a big detour.
+  if (retry.travelTimeSeconds > original.travelTimeSeconds + 1) return false;
+  if (retry.distanceMeters > original.distanceMeters * 1.1) return false;
+  return excursionMeters(retry.geometry) < excursionMeters(original.geometry);
+}
+
 /**
  * Via points are first sent as exact waypoints, which TomTom must touch. When a click lands on a
  * dead-end side street or the far carriageway, that makes the route drive out to the point and back.
- * Only then are those vias re-sent as circle waypoints, each just wide enough to contain the spot the
- * detour left from, so TomTom can stay on the same roads without the detour (or find a better road
- * within that distance). The retry is kept only if it really has less doubling back, and all the
- * figures (ETA, traffic, fuel) always come from the one response whose geometry is returned.
+ * Only then are those vias re-sent as circle waypoints. The retry is kept only when it has less
+ * doubling back AND is not slower or substantially longer; all figures always come from the one
+ * response whose geometry is returned. Any failure of the optional retry falls back to the original.
  */
 export function createTomTomProvider(opts: TomTomProviderOptions): RoutingProvider {
   if (!opts.apiKey) throw new Error('TomTom API key is required');
+  // An explicit option wins; otherwise read TOMTOM_TIMEOUT_MS. Never log the key or the full URL.
+  const timeoutMs = opts.timeoutMs ?? requestTimeoutFromEnv();
   return {
     name: 'tomtom',
     async calculate(input) {
-      const body = await requestRoute(buildTomTomUrl(input, opts));
+      const body = await requestRoute(buildTomTomUrl(input, opts), timeoutMs);
       const result = parseTomTomResponse(body);
       if (input.points.length <= 2) return result;
 
       const circles = viaCircleRadii(input.points, legGeometry(firstRoute(body)));
       if (circles.size === 0) return result;
       try {
-        const retry = parseTomTomResponse(await requestRoute(buildTomTomUrl(input, opts, circles)));
-        return excursionMeters(retry.geometry) < excursionMeters(result.geometry) ? retry : result;
-      } catch (err) {
-        // The exact-waypoint route is still a valid answer if the retry fails.
-        if (err instanceof ProviderError) return result;
-        throw err;
+        const retry = parseTomTomResponse(await requestRoute(buildTomTomUrl(input, opts, circles), timeoutMs));
+        return isBetterRetry(result, retry) ? retry : result;
+      } catch {
+        // The exact-waypoint route is still a valid answer; the retry is best-effort. This also
+        // covers malformed 200 responses, which need not throw a ProviderError.
+        return result;
       }
     },
   };

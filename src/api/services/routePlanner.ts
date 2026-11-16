@@ -49,6 +49,10 @@ export async function planRoute(req: ParsedRouteRequest, deps: PlannerDeps): Pro
   const month = deps.fuelPrices.resolveMonth(req.priceMonth, now);
   const { price, warning: priceWarning } = deps.fuelPrices.getPrice(month, req.zone, req.fuel);
   if (priceWarning) warnings.push(priceWarning);
+  if (req.priceMonth === 'current') {
+    const stale = deps.fuelPrices.staleWarning(now);
+    if (stale) warnings.push(stale);
+  }
   if (fuelType === 'diesel') warnings.push(DIESEL_WHOLESALE_WARNING);
 
   let departAt = req.departAt;
@@ -69,16 +73,21 @@ export async function planRoute(req: ParsedRouteRequest, deps: PlannerDeps): Pro
     compare ? deps.provider.calculate({ ...base, points: [req.points[0], req.points[req.points.length - 1]] }) : undefined,
   ]);
 
-  const withFuel = ({ fuelLitres, ...summary }: ProviderRouteResult): RouteWithFuel => ({
-    ...summary,
-    fuel: estimateFuel({
-      summary,
-      consumption,
-      realWorld,
-      providerLitres: fuelLitres,
-      price: { randsPerLitre: price.randsPerLitre, month: price.month },
-    }),
-  });
+  const withFuel = ({ fuelLitres, warnings: providerWarnings, ...summary }: ProviderRouteResult): RouteWithFuel => {
+    // Provider warnings belong on the response, not on the route object. Both the "your route" and
+    // the optional "fastest" calculation can contribute, and they share the response's warnings array.
+    if (providerWarnings?.length) warnings.push(...providerWarnings);
+    return {
+      ...summary,
+      fuel: estimateFuel({
+        summary,
+        consumption,
+        realWorld,
+        providerLitres: fuelLitres,
+        price: { randsPerLitre: price.randsPerLitre, month: price.month },
+      }),
+    };
+  };
 
   const response: RouteResponse = { yourRoute: withFuel(yours), provider: deps.provider.name, warnings };
   if (fastest) response.fastestRoute = withFuel(fastest);

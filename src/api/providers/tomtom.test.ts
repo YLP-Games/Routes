@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProviderError } from '../errors';
 import { buildConsumptionCurve } from '../services/fuelModel';
-import { createTomTomProvider } from './tomtom';
+import { buildTomTomUrl, createTomTomProvider, DEFAULT_REQUEST_TIMEOUT_MS, requestTimeoutFromEnv } from './tomtom';
 
 const KEY = 'test-key-123';
 const points = [
@@ -130,7 +130,8 @@ describe('TomTom provider', () => {
     expect(r).toMatchObject({
       distanceMeters: 58412,
       travelTimeSeconds: 3125,
-      trafficDelaySeconds: 412,
+      // With-traffic minus free-flow (3125 - 2650), not TomTom's separate 412 s incident figure.
+      trafficDelaySeconds: 475,
       noTrafficTravelTimeSeconds: 2650,
       departureTime: '2026-10-19T06:00:00.000Z',
       arrivalTime: '2026-10-19T06:52:05.000Z',
@@ -147,7 +148,22 @@ describe('TomTom provider', () => {
     stubFetch(200, { routes: [{ ...sample.routes[0], summary }] });
     const r = await createTomTomProvider({ apiKey: KEY }).calculate({ points, fuelType: 'petrol' });
     expect(r.noTrafficTravelTimeSeconds).toBe(3125 - 412);
+    expect(r.trafficDelaySeconds).toBe(412);
     expect(r.fuelLitres).toBeUndefined();
+  });
+
+  it('keeps travel time = free-flow time + delay, and never reports a negative delay', async () => {
+    stubFetch(200, sample);
+    const r = await createTomTomProvider({ apiKey: KEY }).calculate({ points, fuelType: 'petrol' });
+    expect(r.noTrafficTravelTimeSeconds + r.trafficDelaySeconds).toBe(r.travelTimeSeconds);
+
+    // A future departure: TomTom reports no incident delay although the ETA includes typical congestion.
+    const summary = { ...sample.routes[0].summary, trafficDelayInSeconds: 0 };
+    stubFetch(200, { routes: [{ ...sample.routes[0], summary }] });
+    expect((await createTomTomProvider({ apiKey: KEY }).calculate({ points, fuelType: 'petrol' })).trafficDelaySeconds).toBe(475);
+
+    stubFetch(200, { routes: [{ ...sample.routes[0], summary: { ...summary, noTrafficTravelTimeInSeconds: 3200 } }] });
+    expect((await createTomTomProvider({ apiKey: KEY }).calculate({ points, fuelType: 'petrol' })).trafficDelaySeconds).toBe(0);
   });
 
   it('maps TomTom errors to a 502 ProviderError without leaking the key', async () => {
@@ -267,10 +283,73 @@ describe('TomTom provider', () => {
       expect(twoPoint.distanceMeters).toBe(1700);
       expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
     });
+
+    it('rejects a retry that removes a spur but is slower or substantially longer', async () => {
+      const slow = {
+        routes: [{ ...clean.routes[0], summary: summary(1000, 900, 0.08) }],
+      };
+      stubSequence([200, loopy], [200, slow]);
+      const slowResult = await createTomTomProvider({ apiKey: KEY }).calculate({ points: [origin, click, dest], fuelType: 'petrol' });
+      expect(slowResult.distanceMeters).toBe(1700); // original wins despite the retry having no excursion
+
+      const long = {
+        routes: [{ ...clean.routes[0], summary: summary(2500, 400, 0.08) }],
+      };
+      stubSequence([200, loopy], [200, long]);
+      const longResult = await createTomTomProvider({ apiKey: KEY }).calculate({ points: [origin, click, dest], fuelType: 'petrol' });
+      expect(longResult.distanceMeters).toBe(1700);
+    });
+
+    it('falls back to the original on a malformed or leg-less retry', async () => {
+      const malformed = {
+        routes: [{ ...clean.routes[0], summary: { ...clean.routes[0].summary, departureTime: 'not-a-date' } }],
+      };
+      stubSequence([200, loopy], [200, malformed]);
+      const a = await createTomTomProvider({ apiKey: KEY }).calculate({ points: [origin, click, dest], fuelType: 'petrol' });
+      expect(a.distanceMeters).toBe(1700);
+
+      const legless = { routes: [{ summary: clean.routes[0].summary }] };
+      stubSequence([200, loopy], [200, legless]);
+      const b = await createTomTomProvider({ apiKey: KEY }).calculate({ points: [origin, click, dest], fuelType: 'petrol' });
+      expect(b.distanceMeters).toBe(1700);
+    });
+
+    it('encodes every offending via as a circle in a single URL', () => {
+      const url = buildTomTomUrl(
+        { points: [origin, click, { lat: -26.2031, lng: 28.008 }, dest], fuelType: 'petrol' },
+        { apiKey: KEY },
+        new Map([[1, 395], [2, 250]]),
+      );
+      const pathname = decodeURIComponent(new URL(url).pathname);
+      expect(pathname).toContain('circle(-26.2031,28.0051,395)');
+      expect(pathname).toContain('circle(-26.2031,28.008,250)');
+    });
   });
 
   it('treats an empty routes array as a provider error', async () => {
     stubFetch(200, { routes: [] });
     await expect(createTomTomProvider({ apiKey: KEY }).calculate({ points, fuelType: 'petrol' })).rejects.toThrow(/no route/);
+  });
+});
+
+describe('request timeout configuration', () => {
+  it('falls back to 20s for unset or invalid values', () => {
+    expect(requestTimeoutFromEnv({})).toBe(DEFAULT_REQUEST_TIMEOUT_MS);
+    expect(requestTimeoutFromEnv({ TOMTOM_TIMEOUT_MS: '' })).toBe(DEFAULT_REQUEST_TIMEOUT_MS);
+    for (const bad of ['0', '-1', '1.5', 'abc', 'Infinity']) {
+      expect(requestTimeoutFromEnv({ TOMTOM_TIMEOUT_MS: bad })).toBe(DEFAULT_REQUEST_TIMEOUT_MS);
+    }
+  });
+
+  it('accepts a positive integer', () => {
+    expect(requestTimeoutFromEnv({ TOMTOM_TIMEOUT_MS: '4500' })).toBe(4500);
+  });
+
+  it('passes the chosen timeout to AbortSignal.timeout', async () => {
+    const spy = vi.spyOn(AbortSignal, 'timeout');
+    stubFetch(200, sample);
+    await createTomTomProvider({ apiKey: KEY, timeoutMs: 1234 }).calculate({ points, fuelType: 'petrol' });
+    expect(spy).toHaveBeenCalledWith(1234);
+    spy.mockRestore();
   });
 });

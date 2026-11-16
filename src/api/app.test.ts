@@ -1,10 +1,15 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import request from 'supertest';
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import type { FuelPrice, RouteResponse, Vehicle } from '../shared/types';
 import { createApp } from './app';
 import { ProviderError } from './errors';
 import { createMockProvider } from './providers/mock';
+import { createProviderStatus } from './providers/resilience';
 import type { RoutingProvider } from './providers/types';
+import { FUEL_PRICES, createFuelPriceService } from './services/fuelPrices';
 import { DIESEL_WHOLESALE_WARNING, MOCK_WARNING } from './services/routePlanner';
 
 const NOW = new Date('2026-10-19T08:00:00.000Z');
@@ -22,6 +27,34 @@ describe('GET /api/health', () => {
     const res = await request(app).get('/api/health');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ ok: true, provider: 'mock' });
+  });
+
+  it('includes provider health detail when a status snapshot is injected', async () => {
+    const status = createProviderStatus({ now: () => new Date('2026-10-19T08:00:00.000Z') });
+    status.recordError('routing', 'TomTom routing failed (403): Developer Inactive');
+    const withStatus = createApp({ provider: createMockProvider({ now }), now, providerStatus: () => status.snapshot() });
+
+    const res = await request(withStatus).get('/api/health');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      ok: true,
+      provider: 'mock',
+      degraded: true,
+      components: {
+        routing: {
+          ok: false,
+          lastError: 'TomTom routing failed (403): Developer Inactive',
+          lastErrorAt: '2026-10-19T08:00:00.000Z',
+        },
+      },
+    });
+  });
+
+  it('reports degraded: false when an injected status is healthy', async () => {
+    const status = createProviderStatus();
+    status.recordSuccess('routing');
+    const res = await request(createApp({ now, providerStatus: () => status.snapshot() })).get('/api/health');
+    expect(res.body).toEqual({ ok: true, provider: 'mock', degraded: false, components: { routing: { ok: true } } });
   });
 });
 
@@ -146,6 +179,24 @@ describe('POST /api/route', () => {
     expect(res.body.yourRoute.fuel).toMatchObject({ method: 'provider-model', litres: 4.5, costRands: 136.13 });
   });
 
+  it('lifts provider warnings into the response without copying them onto route objects', async () => {
+    const mock = createMockProvider({ now });
+    const provider: RoutingProvider = {
+      name: 'tomtom',
+      calculate: async (input) => ({
+        ...(await mock.calculate(input)),
+        warnings: input.points.length === 3 ? ['your-route warning'] : ['fastest-route warning'],
+      }),
+    };
+    const res = await request(createApp({ provider, now })).post('/api/route').send({ ...baseBody, compareFastest: true });
+    expect(res.status).toBe(200);
+    expect(res.body.warnings).toEqual(expect.arrayContaining(['your-route warning', 'fastest-route warning']));
+    for (const route of [res.body.yourRoute, res.body.fastestRoute]) {
+      expect(route).not.toHaveProperty('warnings');
+      expect(route).not.toHaveProperty('fuelLitres');
+    }
+  });
+
   it('maps provider failures to 502', async () => {
     const provider: RoutingProvider = {
       name: 'tomtom',
@@ -225,7 +276,25 @@ describe('GET /api/fuel-prices', () => {
   it('lists months newest first', async () => {
     const res = await request(app).get('/api/fuel-prices/months');
     expect(res.status).toBe(200);
-    expect(res.body.slice(0, 2)).toEqual(['2026-10', '2026-09']);
+    const months = res.body as string[];
+    expect(months).toEqual([...months].sort().reverse());
+    expect(months).toEqual(expect.arrayContaining(['2026-11', '2026-10', '2026-09']));
+  });
+
+  it('warns on a current-price trip once the table has fallen behind, and not before', async () => {
+    const octoberOnly = createFuelPriceService(FUEL_PRICES.filter((p) => p.month <= '2026-10'));
+    const at = (iso: string) => createApp({ provider: createMockProvider({ now: () => new Date(iso) }), now: () => new Date(iso), fuelPrices: octoberOnly });
+    const stale = (res: { body: RouteResponse }) => res.body.warnings.filter((w) => w.includes('out of date'));
+
+    // 10 November: the adjustment due on Wednesday 4 November is not on file.
+    const late = await request(at('2026-11-10T08:00:00Z')).post('/api/route').send(baseBody);
+    expect(late.body.yourRoute.fuel.priceMonth).toBe('2026-10');
+    expect(stale(late)).toEqual(['Fuel prices may be out of date: the newest on file are for October 2026, but prices were due to change on 2026-11-04']);
+    // Asking for an explicit or previous month is a deliberate choice: no warning.
+    expect(stale(await request(at('2026-11-10T08:00:00Z')).post('/api/route').send({ ...baseBody, priceMonth: 'previous' }))).toEqual([]);
+    expect(stale(await request(at('2026-10-19T08:00:00Z')).post('/api/route').send(baseBody))).toEqual([]);
+    // With the bundled table (November on file) the same date is up to date.
+    expect(stale(await request(createApp({ provider: createMockProvider(), now: () => new Date('2026-11-10T08:00:00Z') })).post('/api/route').send(baseBody))).toEqual([]);
   });
 
   it('filters by month, zone and fuel', async () => {
@@ -253,10 +322,111 @@ describe('GET /api/fuel-prices', () => {
   });
 });
 
+describe('GET /api/places', () => {
+  it('searches the offline list by default', async () => {
+    const res = await request(app).get('/api/places').query({ q: 'stellenbosch' });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([{ name: 'Stellenbosch', detail: 'Western Cape', lat: -33.9321, lng: 18.8602 }]);
+    expect((await request(app).get('/api/places').query({ q: 'zzzz' })).body).toEqual([]);
+  });
+
+  it('uses the configured search provider and maps its failures to 502', async () => {
+    const search = vi.fn(async (q: string) => [{ name: `Result for ${q}`, lat: -26, lng: 28 }]);
+    const withSearch = createApp({ provider: createMockProvider({ now }), now, places: { name: 'tomtom', search } });
+    const res = await request(withSearch).get('/api/places').query({ q: '  12 Main Rd ' });
+    expect(res.body).toEqual([{ name: 'Result for 12 Main Rd', lat: -26, lng: 28 }]);
+    expect(search).toHaveBeenCalledWith('12 Main Rd');
+
+    const failing = createApp({ now, places: { name: 'tomtom', search: async () => { throw new ProviderError('TomTom place search failed (403)'); } } });
+    const bad = await request(failing).get('/api/places').query({ q: 'sandton' });
+    expect(bad.status).toBe(502);
+    expect(bad.body.error).toEqual({ code: 'PROVIDER_ERROR', message: 'TomTom place search failed (403)' });
+  });
+
+  it('400 for a missing, too short or repeated q', async () => {
+    for (const query of [{}, { q: 'a' }, { q: ' a ' }, { q: 'x'.repeat(101) }, 'q=aa&q=bb']) {
+      const res = await request(app).get('/api/places').query(query);
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    }
+  });
+});
+
+describe('transport', () => {
+  it('compresses large responses for clients that accept it', async () => {
+    const res = await request(app).get('/api/vehicles').set('Accept-Encoding', 'gzip');
+    expect(res.headers['content-encoding']).toBe('gzip');
+    expect(res.body.length).toBeGreaterThan(30); // supertest decodes it transparently
+    const plain = await request(app).get('/api/vehicles').set('Accept-Encoding', 'identity');
+    expect(plain.headers['content-encoding']).toBeUndefined();
+  });
+
+  it('sends no CORS headers unless origins are configured', async () => {
+    const res = await request(app).get('/api/health').set('Origin', 'https://elsewhere.example');
+    expect(res.headers['access-control-allow-origin']).toBeUndefined();
+
+    const allowed = createApp({ now, corsOrigins: ['https://routes.example'] });
+    const ok = await request(allowed).get('/api/health').set('Origin', 'https://routes.example');
+    expect(ok.headers['access-control-allow-origin']).toBe('https://routes.example');
+    const other = await request(allowed).get('/api/health').set('Origin', 'https://elsewhere.example');
+    expect(other.headers['access-control-allow-origin']).toBeUndefined();
+  });
+});
+
+describe('serving the built frontend', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'routes-dist-'));
+  mkdirSync(join(dir, 'assets'));
+  writeFileSync(join(dir, 'index.html'), '<!doctype html><title>Routes</title><div id="root"></div>');
+  writeFileSync(join(dir, 'assets', 'index-abc123.js'), 'console.log("app")');
+  const withStatic = createApp({ now, staticDir: dir });
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('serves the app shell for page requests, without long-term caching', async () => {
+    for (const path of ['/', '/some/deep/link', '/apiary']) {
+      const res = await request(withStatic).get(path);
+      expect(res.status).toBe(200);
+      expect(res.text).toContain('<div id="root">');
+      expect(res.headers['cache-control']).toBe('no-cache');
+    }
+  });
+
+  it('serves fingerprinted assets as immutable', async () => {
+    const res = await request(withStatic).get('/assets/index-abc123.js');
+    expect(res.status).toBe(200);
+    expect(res.text).toBe('console.log("app")');
+    expect(res.headers['cache-control']).toBe('public, max-age=31536000, immutable');
+  });
+
+  it('keeps the API and its JSON 404 intact', async () => {
+    expect((await request(withStatic).get('/api/health')).body).toEqual({ ok: true, provider: 'mock' });
+    for (const path of ['/api/nope', '/api']) {
+      const res = await request(withStatic).get(path);
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('NOT_FOUND');
+    }
+    expect((await request(withStatic).post('/some/page')).status).toBe(404);
+  });
+
+  it('serves no pages when no build is configured', async () => {
+    expect((await request(app).get('/')).status).toBe(404);
+  });
+});
+
 describe('unknown routes', () => {
   it('returns a JSON 404', async () => {
     const res = await request(app).get('/api/nope');
     expect(res.status).toBe(404);
     expect(res.body.error.code).toBe('NOT_FOUND');
+  });
+});
+
+describe('security headers', () => {
+  it('sets conservative headers on success and error responses', async () => {
+    for (const res of [await request(app).get('/api/health'), await request(app).get('/api/nope')]) {
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
+      expect(res.headers['x-frame-options']).toBe('SAMEORIGIN');
+      expect(res.headers['referrer-policy']).toBe('strict-origin-when-cross-origin');
+      expect(res.headers['x-powered-by']).toBeUndefined();
+    }
   });
 });

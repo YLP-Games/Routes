@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FuelPrice } from '../../shared/types';
 import { HttpError } from '../errors';
-import { FUEL_PRICES, createFuelPriceService, fuelPrices, saDate } from './fuelPrices';
+import { FUEL_PRICES, createFuelPriceService, firstWednesday, fuelPrices, nextMonth, saDate } from './fuelPrices';
 
 const p = (month: string, effectiveDate: string, zone: FuelPrice['zone'], fuel: FuelPrice['fuel'], r: number): FuelPrice => ({
   month, effectiveDate, zone, fuel, randsPerLitre: r, source: 'test',
@@ -80,6 +80,31 @@ describe('fuel price service', () => {
     expect(svc.listPrices({}, now)[0].month).toBe('2026-10');
   });
 
+  it('finds the first Wednesday of a month and the following month', () => {
+    expect(firstWednesday('2026-09')).toBe('2026-09-02');
+    expect(firstWednesday('2026-10')).toBe('2026-10-07');
+    expect(firstWednesday('2026-11')).toBe('2026-11-04');
+    expect(firstWednesday('2027-07')).toBe('2027-07-07');
+    expect(firstWednesday('2026-04')).toBe('2026-04-01');
+    expect(nextMonth('2026-11')).toBe('2026-12');
+    expect(nextMonth('2026-12')).toBe('2027-01');
+  });
+
+  it('warns once the next adjustment date has passed without new prices on file', () => {
+    // The table ends at October; November's prices were due on Wednesday 4 November.
+    expect(svc.staleWarning(new Date('2026-10-19T08:00:00Z'))).toBeUndefined();
+    expect(svc.staleWarning(new Date('2026-11-03T12:00:00Z'))).toBeUndefined();
+    expect(svc.staleWarning(new Date('2026-11-03T22:30:00Z'))).toMatch(/October 2026.*2026-11-04/); // already the 4th in SA
+    expect(svc.staleWarning(new Date('2026-11-10T08:00:00Z'))).toMatch(/out of date/);
+    // Next month's rows on file but not yet effective: up to date.
+    const ahead = createFuelPriceService([p('2026-10', '2026-10-07', 'inland', 'petrol95', 30.25), p('2026-11', '2026-11-04', 'inland', 'petrol95', 30.24)]);
+    expect(ahead.staleWarning(new Date('2026-11-02T08:00:00Z'))).toBeUndefined();
+    expect(ahead.staleWarning(new Date('2026-11-10T08:00:00Z'))).toBeUndefined();
+    expect(ahead.staleWarning(new Date('2026-12-02T08:00:00Z'))).toMatch(/November 2026.*2026-12-02/);
+    // Nothing effective yet: nothing to say.
+    expect(svc.staleWarning(new Date('2020-01-01T00:00:00Z'))).toBeUndefined();
+  });
+
   it('computes the South African calendar date', () => {
     expect(saDate(new Date('2026-10-06T21:59:00Z'))).toBe('2026-10-06');
     expect(saDate(new Date('2026-10-06T22:00:00Z'))).toBe('2026-10-07');
@@ -100,6 +125,30 @@ describe('bundled fuelPrices.za.json', () => {
       const key = `${r.month}|${r.zone}|${r.fuel}`;
       expect(keys.has(key)).toBe(false);
       keys.add(key);
+    }
+  });
+
+  it('has a complete, consistent set of 8 rows for every month', () => {
+    const byMonth = new Map<string, FuelPrice[]>();
+    for (const r of FUEL_PRICES) {
+      const rows = byMonth.get(r.month) ?? [];
+      rows.push(r);
+      byMonth.set(r.month, rows);
+    }
+    expect(byMonth.size).toBeGreaterThan(0);
+    const zones: FuelPrice['zone'][] = ['inland', 'coastal'];
+    const grades: FuelPrice['fuel'][] = ['petrol93', 'petrol95', 'diesel50ppm', 'diesel500ppm'];
+    for (const [month, rows] of byMonth) {
+      // Exactly 2 zones x 4 grades, with each zone/grade combination present once.
+      expect(rows).toHaveLength(8);
+      for (const zone of zones) {
+        for (const grade of grades) {
+          expect(rows.filter((r) => r.zone === zone && r.fuel === grade)).toHaveLength(1);
+        }
+      }
+      // All rows for a month share one effectiveDate, which is the month's first Wednesday.
+      expect(new Set(rows.map((r) => r.effectiveDate)).size).toBe(1);
+      expect(rows[0].effectiveDate).toBe(firstWednesday(month));
     }
   });
 
