@@ -31,11 +31,11 @@ Each row is a `FuelPrice` (see `src/shared/types.ts`):
 3. Run `npx vitest run --project api`. The data-integrity tests check the format and look for
    duplicate rows.
 
-**Known gap (November 2026):** the inland `diesel50ppm` row is not on file. Reports of the official
-price disagree (R31.60 and R32.09), and neither can be reconciled with the October row here
-(R33.29 less the announced 119.82c is R32.09, while the reports giving R31.60 put October at
-R32.80). Check both months against the DMPR schedule and add the row; until then the API uses
-the coastal price for that grade and says so in `warnings`.
+**November 2026 is complete:** all 8 zone×grade rows (2 zones × 4 grades) are on file. The inland
+`diesel50ppm` (0.005% sulphur) wholesale price is **R32.09/L**, effective 2026-11-04 — reconciled
+from the October inland price of R33.29 less the announced 119.82c/L drop and verified against the
+gov.za DMPR media statement for prices effective 4 November 2026, with The Citizen's report as a
+supporting source. Diesel figures are regulated **wholesale** prices, not retail.
 
 If the table falls behind (the first Wednesday of a month passes and that month has no rows),
 trips priced at `current` carry a "Fuel prices may be out of date" warning.

@@ -7,6 +7,7 @@ import type { FuelPrice, RouteResponse, Vehicle } from '../shared/types';
 import { createApp } from './app';
 import { ProviderError } from './errors';
 import { createMockProvider } from './providers/mock';
+import { createProviderStatus } from './providers/resilience';
 import type { RoutingProvider } from './providers/types';
 import { FUEL_PRICES, createFuelPriceService } from './services/fuelPrices';
 import { DIESEL_WHOLESALE_WARNING, MOCK_WARNING } from './services/routePlanner';
@@ -26,6 +27,34 @@ describe('GET /api/health', () => {
     const res = await request(app).get('/api/health');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ ok: true, provider: 'mock' });
+  });
+
+  it('includes provider health detail when a status snapshot is injected', async () => {
+    const status = createProviderStatus({ now: () => new Date('2026-10-19T08:00:00.000Z') });
+    status.recordError('routing', 'TomTom routing failed (403): Developer Inactive');
+    const withStatus = createApp({ provider: createMockProvider({ now }), now, providerStatus: () => status.snapshot() });
+
+    const res = await request(withStatus).get('/api/health');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      ok: true,
+      provider: 'mock',
+      degraded: true,
+      components: {
+        routing: {
+          ok: false,
+          lastError: 'TomTom routing failed (403): Developer Inactive',
+          lastErrorAt: '2026-10-19T08:00:00.000Z',
+        },
+      },
+    });
+  });
+
+  it('reports degraded: false when an injected status is healthy', async () => {
+    const status = createProviderStatus();
+    status.recordSuccess('routing');
+    const res = await request(createApp({ now, providerStatus: () => status.snapshot() })).get('/api/health');
+    expect(res.body).toEqual({ ok: true, provider: 'mock', degraded: false, components: { routing: { ok: true } } });
   });
 });
 
@@ -148,6 +177,24 @@ describe('POST /api/route', () => {
     };
     const res = await request(createApp({ provider, now })).post('/api/route').send(baseBody);
     expect(res.body.yourRoute.fuel).toMatchObject({ method: 'provider-model', litres: 4.5, costRands: 136.13 });
+  });
+
+  it('lifts provider warnings into the response without copying them onto route objects', async () => {
+    const mock = createMockProvider({ now });
+    const provider: RoutingProvider = {
+      name: 'tomtom',
+      calculate: async (input) => ({
+        ...(await mock.calculate(input)),
+        warnings: input.points.length === 3 ? ['your-route warning'] : ['fastest-route warning'],
+      }),
+    };
+    const res = await request(createApp({ provider, now })).post('/api/route').send({ ...baseBody, compareFastest: true });
+    expect(res.status).toBe(200);
+    expect(res.body.warnings).toEqual(expect.arrayContaining(['your-route warning', 'fastest-route warning']));
+    for (const route of [res.body.yourRoute, res.body.fastestRoute]) {
+      expect(route).not.toHaveProperty('warnings');
+      expect(route).not.toHaveProperty('fuelLitres');
+    }
   });
 
   it('maps provider failures to 502', async () => {

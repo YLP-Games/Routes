@@ -60,7 +60,8 @@ class MapBoundary extends Component<{ children: ReactNode }, { failed: boolean }
 
 export function App() {
   // A trip link (#p=...&car=...) restores the planner: reloads keep the trip, and links can be shared.
-  const [link] = useState(() => decodeTripLink(window.location.hash));
+  // Held in state so an external hash change (pasted link, back/forward) can replace it.
+  const [link, setLink] = useState(() => decodeTripLink(window.location.hash));
 
   const [points, setPoints] = useState<RoutePoint[]>(() => link?.points ?? []);
   const [departAt, setDepartAt] = useState<string | undefined>(link?.departAt);
@@ -92,6 +93,8 @@ export function App() {
   const abortRef = useRef<AbortController | null>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
   const shareTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /** Last hash the hashchange/popstate handler actually processed, to ignore duplicate events. */
+  const lastHashRef = useRef(window.location.hash);
 
   useEffect(() => {
     getHealth()
@@ -112,6 +115,7 @@ export function App() {
     const controller = new AbortController();
     getVehicle(id, controller.signal)
       .then((vehicle) => {
+        if (controller.signal.aborted) return;
         setChoice((c) => (c.vehicle || c.useCustom ? c : { ...c, vehicle }));
         setPendingVehicleId(undefined);
       })
@@ -140,6 +144,50 @@ export function App() {
     const url = fragment ? `#${fragment}` : window.location.pathname + window.location.search;
     window.history.replaceState(window.history.state, '', url);
   }, [points, choice, priceMonth, compareFastest, departAt, pendingVehicleId]);
+
+  // Restore the planner when the address bar changes behind our back (a pasted trip link, or
+  // back/forward navigation). The app's own writes use replaceState, which fires neither event,
+  // so this listener cannot loop on its own output.
+  useEffect(() => {
+    const restoreFromHash = () => {
+      const hash = window.location.hash;
+      // hashchange and popstate can both fire for a single navigation; process it only once.
+      if (hash === lastHashRef.current) return;
+      lastHashRef.current = hash;
+
+      const next = decodeTripLink(hash);
+      // Discard any result/request belonging to the previous trip before swapping in the new one.
+      abortRef.current?.abort();
+      abortRef.current = null;
+      setCalculating(false);
+      setLink(next);
+      setPoints(next?.points ?? []);
+      setDepartAt(next?.departAt);
+      setChoice({
+        ...DEFAULT_VEHICLE_CHOICE,
+        fuel: next?.fuel ?? DEFAULT_VEHICLE_CHOICE.fuel,
+        zone: next?.zone ?? DEFAULT_VEHICLE_CHOICE.zone,
+        useCustom: next?.customConsumption !== undefined,
+        customConsumption: next?.customConsumption ?? '',
+      });
+      setPriceMonth(next?.priceMonth ?? 'current');
+      setCompareFastest(next?.compareFastest ?? true);
+      setPendingVehicleId(next?.vehicleId);
+      setAutoCalculate(
+        (next?.points.length ?? 0) >= 2 &&
+          (next?.vehicleId !== undefined || next?.customConsumption !== undefined),
+      );
+      setTrip(null);
+      setError(null);
+      setNotice(null);
+    };
+    window.addEventListener('hashchange', restoreFromHash);
+    window.addEventListener('popstate', restoreFromHash);
+    return () => {
+      window.removeEventListener('hashchange', restoreFromHash);
+      window.removeEventListener('popstate', restoreFromHash);
+    };
+  }, []);
 
   const changePoints = useCallback((updater: (prev: RoutePoint[]) => RoutePoint[]) => {
     setPoints((prev) => updater(prev));

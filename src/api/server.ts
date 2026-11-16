@@ -7,21 +7,31 @@ import { createTomTomPlaceSearch } from './places/tomtom';
 import type { PlaceSearchProvider } from './places/types';
 import { withRouteCache } from './providers/cache';
 import { createMockProvider } from './providers/mock';
+import {
+  createProviderStatus,
+  withPlaceSearchFallback,
+  withRoutingFallback,
+} from './providers/resilience';
 import { createTomTomProvider } from './providers/tomtom';
 import type { RoutingProvider } from './providers/types';
 
 dotenv.config({ quiet: true });
 
 const apiKey = process.env.TOMTOM_API_KEY?.trim();
+// Offline/mock instances always exist so a configured-but-failing TomTom can degrade gracefully.
+const mockProvider = createMockProvider();
+const offlinePlaces = createOfflinePlaceSearch();
+const providerStatus = createProviderStatus();
 let provider: RoutingProvider;
 let places: PlaceSearchProvider;
 if (apiKey) {
-  provider = createTomTomProvider({ apiKey });
-  places = createTomTomPlaceSearch({ apiKey });
+  // Both live capabilities share one status object, so a failure in either marks /api/health degraded.
+  provider = withRoutingFallback(createTomTomProvider({ apiKey }), mockProvider, providerStatus);
+  places = withPlaceSearchFallback(createTomTomPlaceSearch({ apiKey }), offlinePlaces, providerStatus);
 } else {
   console.warn('[api] TOMTOM_API_KEY is not set: using the mock routing provider (demo estimates, no live traffic).');
-  provider = createMockProvider();
-  places = createOfflinePlaceSearch();
+  provider = mockProvider;
+  places = offlinePlaces;
 }
 
 /** A whole number >= 0 from the environment, or the fallback when unset or malformed. */
@@ -69,6 +79,9 @@ const port = asPort(process.env.API_PORT) ?? cliPort(process.argv.slice(2)) ?? a
 const app = createApp({
   provider,
   places,
+  // Only expose provider health when a live provider is configured; without a key, health stays
+  // the simple liveness response it has always been.
+  ...(apiKey ? { providerStatus: () => providerStatus.snapshot() } : {}),
   rateLimitPerMinute: envCount('RATE_LIMIT_PER_MINUTE', 30),
   corsOrigins: process.env.CORS_ORIGINS?.split(',').map((o) => o.trim()).filter(Boolean),
   trustProxy: trustProxy(),

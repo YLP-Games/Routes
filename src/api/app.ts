@@ -9,6 +9,7 @@ import { HttpError } from './errors';
 import { createOfflinePlaceSearch } from './places/offline';
 import type { PlaceSearchProvider } from './places/types';
 import { createMockProvider } from './providers/mock';
+import type { ProviderStatusSnapshot } from './providers/resilience';
 import type { RoutingProvider } from './providers/types';
 import { rateLimit } from './rateLimit';
 import { formatZodError, fuelPricesQuerySchema, placesQuerySchema, routeRequestSchema, vehiclesQuerySchema } from './schemas';
@@ -34,6 +35,8 @@ export interface AppOptions {
   staticDir?: string;
   /** Express "trust proxy" setting, for when the app runs behind a reverse proxy. */
   trustProxy?: boolean | number | string;
+  /** Live-provider health snapshot, included in /api/health when supplied. */
+  providerStatus?: () => ProviderStatusSnapshot;
 }
 
 function parse<T extends z.ZodType>(schema: T, value: unknown): z.infer<T> {
@@ -74,6 +77,11 @@ export function createApp(opts: AppOptions = {}) {
 
   app.get('/api/health', (_req, res) => {
     const body: HealthResponse = { ok: true, provider: provider.name };
+    if (opts.providerStatus) {
+      const { degraded, components } = opts.providerStatus();
+      body.degraded = degraded;
+      body.components = components;
+    }
     res.json(body);
   });
 

@@ -50,6 +50,14 @@
   {
     "month": "2026-11",
     "effectiveDate": "2026-11-04",
+    "zone": "inland",
+    "fuel": "diesel50ppm",
+    "randsPerLitre": 32.09,
+    "source": "https://www.gov.za/news/media-statements/minister-gwede-mantashe-announces-adjustment-fuel-prices-effective-4-0 (DMPR, prices effective 2026-11-04); https://www.citizen.co.za/network-news/motoring/2026/11/03/official-fuel-prices-for-november-announced/ (The Citizen, DMPR prices, 2026-11-03); Oct inland 33.29 less 119.82c - wholesale price (retail diesel is not regulated)"
+  },
+  {
+    "month": "2026-11",
+    "effectiveDate": "2026-11-04",
     "zone": "coastal",
     "fuel": "diesel50ppm",
     "randsPerLitre": 30.83,

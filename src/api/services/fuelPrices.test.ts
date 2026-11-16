@@ -128,6 +128,30 @@ describe('bundled fuelPrices.za.json', () => {
     }
   });
 
+  it('has a complete, consistent set of 8 rows for every month', () => {
+    const byMonth = new Map<string, FuelPrice[]>();
+    for (const r of FUEL_PRICES) {
+      const rows = byMonth.get(r.month) ?? [];
+      rows.push(r);
+      byMonth.set(r.month, rows);
+    }
+    expect(byMonth.size).toBeGreaterThan(0);
+    const zones: FuelPrice['zone'][] = ['inland', 'coastal'];
+    const grades: FuelPrice['fuel'][] = ['petrol93', 'petrol95', 'diesel50ppm', 'diesel500ppm'];
+    for (const [month, rows] of byMonth) {
+      // Exactly 2 zones x 4 grades, with each zone/grade combination present once.
+      expect(rows).toHaveLength(8);
+      for (const zone of zones) {
+        for (const grade of grades) {
+          expect(rows.filter((r) => r.zone === zone && r.fuel === grade)).toHaveLength(1);
+        }
+      }
+      // All rows for a month share one effectiveDate, which is the month's first Wednesday.
+      expect(new Set(rows.map((r) => r.effectiveDate)).size).toBe(1);
+      expect(rows[0].effectiveDate).toBe(firstWednesday(month));
+    }
+  });
+
   it('contains the verified October 2026 figures', () => {
     expect(fuelPrices.getPrice('2026-10', 'inland', 'petrol95').price.randsPerLitre).toBe(30.25);
     expect(fuelPrices.getPrice('2026-10', 'inland', 'petrol93').price.randsPerLitre).toBe(29.88);

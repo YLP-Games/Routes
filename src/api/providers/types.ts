@@ -13,7 +13,8 @@ export interface ProviderRouteInput {
   fuelType: 'petrol' | 'diesel';
 }
 
-export type ProviderRouteResult = RouteSummary & { fuelLitres?: number };
+/** Internal provider result: `warnings` are lifted into RouteResponse.warnings by the planner. */
+export type ProviderRouteResult = RouteSummary & { fuelLitres?: number; warnings?: string[] };
 
 export interface RoutingProvider {
   name: 'tomtom' | 'mock';

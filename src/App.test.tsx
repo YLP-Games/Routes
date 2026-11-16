@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { LatLng, RouteRequest } from './shared/types';
 import { App } from './App';
@@ -318,6 +318,72 @@ describe('App', () => {
     expect(screen.getByText('Start')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Calculate trip' })).toBeDisabled();
     expect(routeCalls(fetchMock)).toHaveLength(0);
+  });
+
+  it('re-decodes a pasted trip link from the hash and replaces the old trip', async () => {
+    const originalHash = window.location.hash;
+    try {
+      stubFetch(() => jsonResponse(sampleResponse));
+      window.history.replaceState(null, '', '/#p=-26.2,28;-26.1,28.1&c=7.4');
+      render(<App />);
+
+      // The initial link is restored on mount.
+      expect(screen.getByText('-26.2000, 28.0000')).toBeInTheDocument();
+      expect(screen.getByText('-26.1000, 28.1000')).toBeInTheDocument();
+      expect(screen.getByLabelText('Consumption (L/100 km)')).toHaveValue(7.4);
+
+      // A different link is pasted into the address bar. A back/forward hash navigation fires both
+      // popstate and hashchange; sending both confirms the state is applied once, not twice.
+      const nextHash =
+        '#p=-33.9,18.4~CapeTown;-29.9,31.0~Durban&c=8.1&f=diesel50ppm&z=coastal&m=previous&cmp=0';
+      act(() => {
+        window.location.hash = nextHash;
+        window.dispatchEvent(new PopStateEvent('popstate'));
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
+      });
+
+      expect(screen.getByText('CapeTown')).toBeInTheDocument();
+      expect(screen.getByText('Durban')).toBeInTheDocument();
+      expect(screen.queryByText('-26.2000, 28.0000')).not.toBeInTheDocument();
+      expect(screen.queryByText('-26.1000, 28.1000')).not.toBeInTheDocument();
+      expect(screen.getByLabelText('Consumption (L/100 km)')).toHaveValue(8.1);
+      expect(screen.getByLabelText('Fuel')).toHaveValue('diesel50ppm');
+      expect(screen.getByLabelText('Price zone')).toHaveValue('coastal');
+      expect(screen.getByLabelText(/Last month/)).toBeChecked();
+      expect(screen.getByLabelText('Compare with the fastest route')).not.toBeChecked();
+
+      // The address bar must show the new trip, not be clobbered with the old state on re-render.
+      expect(window.location.hash).toContain('-33.9');
+      expect(window.location.hash).not.toContain('-26.2');
+    } finally {
+      window.history.replaceState(null, '', originalHash || '/');
+    }
+  });
+
+  it('resets the planner when the hash is cleared via hashchange', async () => {
+    const originalHash = window.location.hash;
+    try {
+      stubFetch(() => jsonResponse(sampleResponse));
+      window.history.replaceState(null, '', '/#p=-33.9,18.4~CapeTown;-29.9,31.0~Durban&c=8.1&z=coastal');
+      render(<App />);
+
+      expect(screen.getByText('CapeTown')).toBeInTheDocument();
+      expect(screen.getByText('Durban')).toBeInTheDocument();
+
+      act(() => {
+        window.location.hash = '';
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
+      });
+
+      expect(screen.queryByText('CapeTown')).not.toBeInTheDocument();
+      expect(screen.queryByText('Durban')).not.toBeInTheDocument();
+      expect(screen.getByText(/Click the map to set your start/)).toBeInTheDocument();
+      expect(screen.queryByLabelText('Consumption (L/100 km)')).not.toBeInTheDocument();
+      expect(screen.getByLabelText('Price zone')).toHaveValue('inland');
+      expect(window.location.hash).toBe('');
+    } finally {
+      window.history.replaceState(null, '', originalHash || '/');
+    }
   });
 
   it('shows the API error message', async () => {
