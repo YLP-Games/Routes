@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProviderError } from '../errors';
 import { buildConsumptionCurve } from '../services/fuelModel';
-import { createTomTomProvider, DEFAULT_REQUEST_TIMEOUT_MS, requestTimeoutFromEnv } from './tomtom';
+import { buildTomTomUrl, createTomTomProvider, DEFAULT_REQUEST_TIMEOUT_MS, requestTimeoutFromEnv } from './tomtom';
 
 const KEY = 'test-key-123';
 const points = [
@@ -191,6 +191,139 @@ describe('TomTom provider', () => {
     await expect(createTomTomProvider({ apiKey: KEY }).calculate({ points, fuelType: 'petrol' })).rejects.toBeInstanceOf(
       ProviderError,
     );
+  });
+
+  describe('via points that force a detour', () => {
+    const origin = { lat: -26.2, lng: 28.0 };
+    const dest = { lat: -26.2, lng: 28.01 };
+    const click = { lat: -26.2031, lng: 28.0051 }; // end of a dead-end street south of the road
+    const along = (from: number, to: number, lat = -26.2) =>
+      Array.from({ length: 11 }, (_, k) => ({ latitude: lat, longitude: from + ((to - from) * k) / 10 }));
+    const street = Array.from({ length: 7 }, (_, k) => ({ latitude: -26.2 - 0.0005 * k, longitude: 28.005 }));
+    const summary = (lengthInMeters: number, travelTimeInSeconds: number, fuel: number) => ({
+      lengthInMeters,
+      travelTimeInSeconds,
+      trafficDelayInSeconds: 60,
+      noTrafficTravelTimeInSeconds: travelTimeInSeconds - 60,
+      departureTime: '2026-10-19T08:00:00+02:00',
+      arrivalTime: '2026-10-19T08:20:00+02:00',
+      fuelConsumptionInLiters: fuel,
+    });
+    // Exact waypoint: along the road, down the dead end to the click, back up, on to the destination.
+    const loopy = {
+      routes: [{
+        summary: summary(1700, 600, 0.12),
+        legs: [
+          { points: [...along(28.0, 28.005), ...street.slice(1)] },
+          { points: [...[...street].reverse(), ...along(28.005, 28.01).slice(1)] },
+        ],
+      }],
+    };
+    // Circle waypoint: straight along the road, one leg.
+    const clean = { routes: [{ summary: summary(1000, 420, 0.08), legs: [{ points: along(28.0, 28.01) }] }] };
+
+    function stubSequence(...responses: Array<[number, unknown]>) {
+      const fn = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => {
+        const [status, body] = responses[Math.min(fn.mock.calls.length - 1, responses.length - 1)];
+        return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+      });
+      vi.stubGlobal('fetch', fn);
+      return fn;
+    }
+    const path = (fn: ReturnType<typeof stubSequence>, call: number) =>
+      decodeURIComponent(new URL(String(fn.mock.calls[call][0])).pathname);
+
+    it('retries the offending via as a circle waypoint and returns that route with its own figures', async () => {
+      const fetchMock = stubSequence([200, loopy], [200, clean]);
+      const curve = buildConsumptionCurve({ urban: 7.0, extraUrban: 4.5, combined: 5.4 });
+      const r = await createTomTomProvider({ apiKey: KEY }).calculate({
+        points: [origin, click, dest],
+        departAt: '2026-10-19T08:00:00+02:00',
+        consumptionCurve: curve,
+        vehicleWeightKg: 1230,
+        fuelType: 'petrol',
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(path(fetchMock, 0)).toBe('/routing/1/calculateRoute/-26.2,28:-26.2031,28.0051:-26.2,28.01/json');
+      // Radius: ~345 m from the click back to the road junction, plus the margin.
+      expect(path(fetchMock, 1)).toBe('/routing/1/calculateRoute/-26.2,28:circle(-26.2031,28.0051,395):-26.2,28.01/json');
+      const first = new URL(String(fetchMock.mock.calls[0][0])).searchParams;
+      const retry = new URL(String(fetchMock.mock.calls[1][0])).searchParams;
+      expect([...retry.entries()]).toEqual([...first.entries()]); // same traffic, departure and fuel model
+      expect(r).toMatchObject({ distanceMeters: 1000, travelTimeSeconds: 420, noTrafficTravelTimeSeconds: 360, fuelLitres: 0.08 });
+      expect(r.geometry).toHaveLength(11);
+    });
+
+    it('keeps the exact-waypoint route when the retry doubles back at least as much', async () => {
+      const fetchMock = stubSequence([200, loopy], [200, { routes: [{ ...loopy.routes[0], summary: summary(1650, 590, 0.11) }] }]);
+      const r = await createTomTomProvider({ apiKey: KEY }).calculate({ points: [origin, click, dest], fuelType: 'petrol' });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(r).toMatchObject({ distanceMeters: 1700, travelTimeSeconds: 600, fuelLitres: 0.12 });
+    });
+
+    it('keeps the exact-waypoint route when the retry fails', async () => {
+      stubSequence([200, loopy], [400, { detailedError: { message: 'bad circle' } }]);
+      const r = await createTomTomProvider({ apiKey: KEY }).calculate({ points: [origin, click, dest], fuelType: 'petrol' });
+      expect(r.distanceMeters).toBe(1700);
+    });
+
+    it('makes a single call when the vias are reached cleanly or there are none', async () => {
+      const throughVia = { routes: [{ ...clean.routes[0], legs: [{ points: along(28.0, 28.005) }, { points: along(28.005, 28.01) }] }] };
+      const fetchMock = stubSequence([200, throughVia]);
+      const onRoad = { lat: -26.2001, lng: 28.005 };
+      await createTomTomProvider({ apiKey: KEY }).calculate({
+        points: [origin, onRoad, dest],
+        fuelType: 'petrol',
+      });
+      // A two-point route is never retried, whatever its shape.
+      stubSequence([200, loopy]);
+      const twoPoint = await createTomTomProvider({ apiKey: KEY }).calculate({ points: [origin, dest], fuelType: 'petrol' });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(twoPoint.distanceMeters).toBe(1700);
+      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects a retry that removes a spur but is slower or substantially longer', async () => {
+      const slow = {
+        routes: [{ ...clean.routes[0], summary: summary(1000, 900, 0.08) }],
+      };
+      stubSequence([200, loopy], [200, slow]);
+      const slowResult = await createTomTomProvider({ apiKey: KEY }).calculate({ points: [origin, click, dest], fuelType: 'petrol' });
+      expect(slowResult.distanceMeters).toBe(1700); // original wins despite the retry having no excursion
+
+      const long = {
+        routes: [{ ...clean.routes[0], summary: summary(2500, 400, 0.08) }],
+      };
+      stubSequence([200, loopy], [200, long]);
+      const longResult = await createTomTomProvider({ apiKey: KEY }).calculate({ points: [origin, click, dest], fuelType: 'petrol' });
+      expect(longResult.distanceMeters).toBe(1700);
+    });
+
+    it('falls back to the original on a malformed or leg-less retry', async () => {
+      const malformed = {
+        routes: [{ ...clean.routes[0], summary: { ...clean.routes[0].summary, departureTime: 'not-a-date' } }],
+      };
+      stubSequence([200, loopy], [200, malformed]);
+      const a = await createTomTomProvider({ apiKey: KEY }).calculate({ points: [origin, click, dest], fuelType: 'petrol' });
+      expect(a.distanceMeters).toBe(1700);
+
+      const legless = { routes: [{ summary: clean.routes[0].summary }] };
+      stubSequence([200, loopy], [200, legless]);
+      const b = await createTomTomProvider({ apiKey: KEY }).calculate({ points: [origin, click, dest], fuelType: 'petrol' });
+      expect(b.distanceMeters).toBe(1700);
+    });
+
+    it('encodes every offending via as a circle in a single URL', () => {
+      const url = buildTomTomUrl(
+        { points: [origin, click, { lat: -26.2031, lng: 28.008 }, dest], fuelType: 'petrol' },
+        { apiKey: KEY },
+        new Map([[1, 395], [2, 250]]),
+      );
+      const pathname = decodeURIComponent(new URL(url).pathname);
+      expect(pathname).toContain('circle(-26.2031,28.0051,395)');
+      expect(pathname).toContain('circle(-26.2031,28.008,250)');
+    });
   });
 
   it('treats an empty routes array as a provider error', async () => {
