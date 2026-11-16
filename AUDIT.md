@@ -29,7 +29,7 @@ applied. The earlier self-contained version of the audit and its changes is kept
 | P1 | No graceful shutdown | **Added** SIGTERM/SIGINT handling that drains in-flight requests, with a force-exit fallback. |
 | P2 | Missing component tests | **Added** suites for `DepartureTimePicker`, `PriceMonthToggle` and `Warnings`. |
 | P2 | Map markers not keyboard-operable | **Added** focusable markers, arrow-key nudging, Delete/Backspace removal, and an "add point at map centre" button. |
-| P2 | No CI/license/contributing guide | **Added** GitHub Actions (Node 20/22), MIT license, `CONTRIBUTING.md`. |
+| P2 | No CI/license/contributing guide | **Added** GitHub Actions (Node 22/24 — Node 20 is incompatible with `undici@8` from jsdom), MIT license, `CONTRIBUTING.md`. |
 | P2 | No one-command verification gate | **Added** `npm run check` (typecheck + test + build). |
 
 ## PR #1 review — headline
