@@ -18,7 +18,7 @@ Stack: React + TypeScript + Vite (frontend), Node + Express (backend), single pa
 
 ## Setup
 
-Requires Node 20+.
+Requires Node 22.19+ (jsdom's `undici` dependency needs it).
 
 ```sh
 npm install

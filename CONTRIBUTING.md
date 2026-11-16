@@ -5,7 +5,7 @@ pull-request process.
 
 ## Development setup
 
-Requires Node 20+ and npm.
+Requires Node 22.19+ and npm (`undici`, pulled in by jsdom, needs it).
 
 ```sh
 npm install
@@ -38,7 +38,7 @@ for the optional rate-limit, cache, CORS, proxy and timeout settings.
 ## Before opening a PR
 
 Run `npm run check` (or all three commands separately) and make sure it passes. CI runs the same
-checks on Node 20 and 22 for every push to `main` and every pull request.
+checks on Node 22 and 24 for every push to `main` and every pull request.
 
 Changes to `src/shared/api.ts` and `src/shared/types.ts` affect both the frontend and backend — keep
 them in sync and call them out in the PR description.

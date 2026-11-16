@@ -29,7 +29,7 @@ applied. The earlier self-contained version of the audit and its changes is kept
 | P1 | No graceful shutdown | **Added** SIGTERM/SIGINT handling that drains in-flight requests, with a force-exit fallback. |
 | P2 | Missing component tests | **Added** suites for `DepartureTimePicker`, `PriceMonthToggle` and `Warnings`. |
 | P2 | Map markers not keyboard-operable | **Added** focusable markers, arrow-key nudging, Delete/Backspace removal, and an "add point at map centre" button. |
-| P2 | No CI/license/contributing guide | **Added** GitHub Actions (Node 20/22), MIT license, `CONTRIBUTING.md`. |
+| P2 | No CI/license/contributing guide | **Added** GitHub Actions (Node 22/24 — Node 20 is incompatible with `undici@8` from jsdom), MIT license, `CONTRIBUTING.md`. |
 | P2 | No one-command verification gate | **Added** `npm run check` (typecheck + test + build). |
 
 ## PR #1 review — headline
@@ -56,7 +56,9 @@ chunk and is off the initial critical path.
 
 ## Remaining follow-ups
 
-- Address the PR #1 findings before merging it.
+- PR #1 findings have been addressed in [PR #3](https://github.com/YLP-Games/Routes/pull/3)
+  (`fix/via-point-detours`): hardened retry selection, complete fallback, bounded geometry analysis
+  and radius cap. Decide whether to merge #3 or fold it back into #1.
 - Shared (Redis-backed) rate limiting/caching for multi-instance deployments; current guards are
   in-process.
 - Coverage thresholds via `@vitest/coverage-v8`.
