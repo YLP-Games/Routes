@@ -1,8 +1,9 @@
 import { useEffect, useId, useState } from 'react';
 import { getFuelPrices } from '../lib/apiClient';
 import { formatMonth } from '../lib/format';
+import type { PriceMonthChoice } from '../lib/options';
 
-export type PriceMonthChoice = 'current' | 'previous';
+export type { PriceMonthChoice };
 
 export interface PriceMonthToggleProps {
   value: PriceMonthChoice;

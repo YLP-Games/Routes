@@ -1,10 +1,14 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import request from 'supertest';
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import type { FuelPrice, RouteResponse, Vehicle } from '../shared/types';
 import { createApp } from './app';
 import { ProviderError } from './errors';
 import { createMockProvider } from './providers/mock';
 import type { RoutingProvider } from './providers/types';
+import { FUEL_PRICES, createFuelPriceService } from './services/fuelPrices';
 import { DIESEL_WHOLESALE_WARNING, MOCK_WARNING } from './services/routePlanner';
 
 const NOW = new Date('2026-10-19T08:00:00.000Z');
@@ -225,7 +229,25 @@ describe('GET /api/fuel-prices', () => {
   it('lists months newest first', async () => {
     const res = await request(app).get('/api/fuel-prices/months');
     expect(res.status).toBe(200);
-    expect(res.body.slice(0, 2)).toEqual(['2026-10', '2026-09']);
+    const months = res.body as string[];
+    expect(months).toEqual([...months].sort().reverse());
+    expect(months).toEqual(expect.arrayContaining(['2026-11', '2026-10', '2026-09']));
+  });
+
+  it('warns on a current-price trip once the table has fallen behind, and not before', async () => {
+    const octoberOnly = createFuelPriceService(FUEL_PRICES.filter((p) => p.month <= '2026-10'));
+    const at = (iso: string) => createApp({ provider: createMockProvider({ now: () => new Date(iso) }), now: () => new Date(iso), fuelPrices: octoberOnly });
+    const stale = (res: { body: RouteResponse }) => res.body.warnings.filter((w) => w.includes('out of date'));
+
+    // 10 November: the adjustment due on Wednesday 4 November is not on file.
+    const late = await request(at('2026-11-10T08:00:00Z')).post('/api/route').send(baseBody);
+    expect(late.body.yourRoute.fuel.priceMonth).toBe('2026-10');
+    expect(stale(late)).toEqual(['Fuel prices may be out of date: the newest on file are for October 2026, but prices were due to change on 2026-11-04']);
+    // Asking for an explicit or previous month is a deliberate choice: no warning.
+    expect(stale(await request(at('2026-11-10T08:00:00Z')).post('/api/route').send({ ...baseBody, priceMonth: 'previous' }))).toEqual([]);
+    expect(stale(await request(at('2026-10-19T08:00:00Z')).post('/api/route').send(baseBody))).toEqual([]);
+    // With the bundled table (November on file) the same date is up to date.
+    expect(stale(await request(createApp({ provider: createMockProvider(), now: () => new Date('2026-11-10T08:00:00Z') })).post('/api/route').send(baseBody))).toEqual([]);
   });
 
   it('filters by month, zone and fuel', async () => {
@@ -250,6 +272,96 @@ describe('GET /api/fuel-prices', () => {
     const res = await request(app).get('/api/fuel-prices').query({ month: '2019-01' });
     expect(res.status).toBe(404);
     expect(res.body.error.code).toBe('PRICE_MONTH_NOT_FOUND');
+  });
+});
+
+describe('GET /api/places', () => {
+  it('searches the offline list by default', async () => {
+    const res = await request(app).get('/api/places').query({ q: 'stellenbosch' });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([{ name: 'Stellenbosch', detail: 'Western Cape', lat: -33.9321, lng: 18.8602 }]);
+    expect((await request(app).get('/api/places').query({ q: 'zzzz' })).body).toEqual([]);
+  });
+
+  it('uses the configured search provider and maps its failures to 502', async () => {
+    const search = vi.fn(async (q: string) => [{ name: `Result for ${q}`, lat: -26, lng: 28 }]);
+    const withSearch = createApp({ provider: createMockProvider({ now }), now, places: { name: 'tomtom', search } });
+    const res = await request(withSearch).get('/api/places').query({ q: '  12 Main Rd ' });
+    expect(res.body).toEqual([{ name: 'Result for 12 Main Rd', lat: -26, lng: 28 }]);
+    expect(search).toHaveBeenCalledWith('12 Main Rd');
+
+    const failing = createApp({ now, places: { name: 'tomtom', search: async () => { throw new ProviderError('TomTom place search failed (403)'); } } });
+    const bad = await request(failing).get('/api/places').query({ q: 'sandton' });
+    expect(bad.status).toBe(502);
+    expect(bad.body.error).toEqual({ code: 'PROVIDER_ERROR', message: 'TomTom place search failed (403)' });
+  });
+
+  it('400 for a missing, too short or repeated q', async () => {
+    for (const query of [{}, { q: 'a' }, { q: ' a ' }, { q: 'x'.repeat(101) }, 'q=aa&q=bb']) {
+      const res = await request(app).get('/api/places').query(query);
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    }
+  });
+});
+
+describe('transport', () => {
+  it('compresses large responses for clients that accept it', async () => {
+    const res = await request(app).get('/api/vehicles').set('Accept-Encoding', 'gzip');
+    expect(res.headers['content-encoding']).toBe('gzip');
+    expect(res.body.length).toBeGreaterThan(30); // supertest decodes it transparently
+    const plain = await request(app).get('/api/vehicles').set('Accept-Encoding', 'identity');
+    expect(plain.headers['content-encoding']).toBeUndefined();
+  });
+
+  it('sends no CORS headers unless origins are configured', async () => {
+    const res = await request(app).get('/api/health').set('Origin', 'https://elsewhere.example');
+    expect(res.headers['access-control-allow-origin']).toBeUndefined();
+
+    const allowed = createApp({ now, corsOrigins: ['https://routes.example'] });
+    const ok = await request(allowed).get('/api/health').set('Origin', 'https://routes.example');
+    expect(ok.headers['access-control-allow-origin']).toBe('https://routes.example');
+    const other = await request(allowed).get('/api/health').set('Origin', 'https://elsewhere.example');
+    expect(other.headers['access-control-allow-origin']).toBeUndefined();
+  });
+});
+
+describe('serving the built frontend', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'routes-dist-'));
+  mkdirSync(join(dir, 'assets'));
+  writeFileSync(join(dir, 'index.html'), '<!doctype html><title>Routes</title><div id="root"></div>');
+  writeFileSync(join(dir, 'assets', 'index-abc123.js'), 'console.log("app")');
+  const withStatic = createApp({ now, staticDir: dir });
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('serves the app shell for page requests, without long-term caching', async () => {
+    for (const path of ['/', '/some/deep/link', '/apiary']) {
+      const res = await request(withStatic).get(path);
+      expect(res.status).toBe(200);
+      expect(res.text).toContain('<div id="root">');
+      expect(res.headers['cache-control']).toBe('no-cache');
+    }
+  });
+
+  it('serves fingerprinted assets as immutable', async () => {
+    const res = await request(withStatic).get('/assets/index-abc123.js');
+    expect(res.status).toBe(200);
+    expect(res.text).toBe('console.log("app")');
+    expect(res.headers['cache-control']).toBe('public, max-age=31536000, immutable');
+  });
+
+  it('keeps the API and its JSON 404 intact', async () => {
+    expect((await request(withStatic).get('/api/health')).body).toEqual({ ok: true, provider: 'mock' });
+    for (const path of ['/api/nope', '/api']) {
+      const res = await request(withStatic).get(path);
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('NOT_FOUND');
+    }
+    expect((await request(withStatic).post('/some/page')).status).toBe(404);
+  });
+
+  it('serves no pages when no build is configured', async () => {
+    expect((await request(app).get('/')).status).toBe(404);
   });
 });
 

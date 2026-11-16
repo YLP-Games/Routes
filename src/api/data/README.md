@@ -31,6 +31,15 @@ Each row is a `FuelPrice` (see `src/shared/types.ts`):
 3. Run `npx vitest run --project api`. The data-integrity tests check the format and look for
    duplicate rows.
 
+**Known gap (November 2026):** the inland `diesel50ppm` row is not on file. Reports of the official
+price disagree (R31.60 and R32.09), and neither can be reconciled with the October row here
+(R33.29 less the announced 119.82c is R32.09, while the reports giving R31.60 put October at
+R32.80). Check both months against the DMPR schedule and add the row; until then the API uses
+the coastal price for that grade and says so in `warnings`.
+
+If the table falls behind (the first Wednesday of a month passes and that month has no rows),
+trips priced at `current` carry a "Fuel prices may be out of date" warning.
+
 `current` means the newest month whose `effectiveDate` has passed in South African time, so
 there's no need to change any code when a new month starts. `previous` is the month listed just
 before `current`.
